@@ -84,6 +84,7 @@
     <Compile Include="SerialPortRxMixins.cs" />
   </ItemGroup>
   <ItemGroup>
+    <None Include="SerialPortRx.nuspec" />
     <None Include="packages.config" />
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
