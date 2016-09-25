@@ -1,5 +1,7 @@
 version: 1.0.{build}
 image: Visual Studio 2015
+configuration: Release
+platform: Any CPU
 nuget:
   account_feed: true
   project_feed: true
