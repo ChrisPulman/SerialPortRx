@@ -10,8 +10,8 @@ before_build:
 build:
   verbosity: minimal
 artifacts:
-- path: '**\*.nupkg'
+- path: '**\SerialPortRx.*.nupkg'
 deploy:
 - provider: NuGet
   api_key:
-    secure: T8iCmiuaS2uvvWctYHGtxZkuhP5zPtpNYf27RivL2n9/qDb0O3/YevGed7qEwfmR
+    secure: VPVcOZWKhKQ9Bq5KTvwZC2G4j6GoOvms0/ViiOuWJl5VMahv5iMmc79BhbtC34l5
