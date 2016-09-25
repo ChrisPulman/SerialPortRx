@@ -1,0 +1,7 @@
+version: 1.0.{build}
+build:
+  verbosity: minimal
+deploy:
+- provider: NuGet
+  api_key:
+    secure: T8iCmiuaS2uvvWctYHGtxZkuhP5zPtpNYf27RivL2n9/qDb0O3/YevGed7qEwfmR
