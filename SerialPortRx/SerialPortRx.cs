@@ -191,7 +191,7 @@
         public IObservable<string[]> PortNames => Observable.Create<string[]>(obs =>
         {
             string[] compare = null;
-            var tim = Observable.Interval(TimeSpan.FromMilliseconds(500)).Subscribe(_ =>
+            return Observable.Interval(TimeSpan.FromMilliseconds(500)).Subscribe(_ =>
              {
                  var compareNew = SerialPort.GetPortNames();
                  if (compareNew.Length == 0)
@@ -201,13 +201,12 @@
                      compare = compareNew;
                      obs.OnNext(compareNew);
                  }
-                 if ((string.Join("", compare) != string.Join("", compareNew)))
+                 if (string.Join("", compare) != string.Join("", compareNew))
                  {
                      obs.OnNext(compareNew);
                      compare = compareNew;
                  }
              });
-            return tim;
         }).Retry().Publish().RefCount();
 
         /// <summary>

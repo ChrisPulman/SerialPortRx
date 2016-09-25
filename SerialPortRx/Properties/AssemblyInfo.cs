@@ -2,7 +2,7 @@
 using System.Runtime.InteropServices;
 
 [assembly: AssemblyTitle("SerialPortRx")]
-[assembly: AssemblyDescription("An Observable Com port extension of SerialPortStream")]
+[assembly: AssemblyDescription("An Observable Com port extension of System.IO.Ports.SerialPort")]
 [assembly: AssemblyConfiguration(".Net 4.6.1")]
 [assembly: AssemblyCompany("ChrisPulman")]
 [assembly: AssemblyProduct("SerialPortRx")]
