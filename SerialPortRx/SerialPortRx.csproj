@@ -7,7 +7,7 @@
     <ProjectGuid>{CDA3585B-D3D6-4BE4-9A6B-582AB5DE0B8F}</ProjectGuid>
     <OutputType>Library</OutputType>
     <AppDesignerFolder>Properties</AppDesignerFolder>
-    <RootNamespace>SerialPortRx</RootNamespace>
+    <RootNamespace>CP.IO.Ports</RootNamespace>
     <AssemblyName>SerialPortRx</AssemblyName>
     <TargetFrameworkVersion>v4.6.1</TargetFrameworkVersion>
     <FileAlignment>512</FileAlignment>

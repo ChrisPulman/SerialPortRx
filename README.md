@@ -16,13 +16,13 @@ A Reactive Serial Port Library
         private static void Main(string[] args)
         {
             // configure the data to write, this can be a string, a byte array, or a char array
-            var DataR60 = "DataToWrite";
+            var dataToWrite = "DataToWrite";
 
             using (var port = new SerialPortRx("COM1", 9600))
             {
                 var dis = new CompositeDisposable();
                 // Subscribe to com ports available
-                port.PortNames.ForEach().Subscribe(name =>
+                SerialPortRx.PortNames.ForEach().Subscribe(name =>
                 {
                     Console.WriteLine(name);
                 }).AddTo(dis);
@@ -41,7 +41,7 @@ A Reactive Serial Port Library
                 // Subscribe to the Is Open @500ms intervals and write to com port
                 port.WhileIsOpen(TimeSpan.FromMilliseconds(500)).Subscribe(x =>
                 {
-                    port.Write(DataR60);
+                    port.Write(dataToWrite);
                 }).AddTo(dis);
                 Console.ReadLine();
                 // Cleanup port

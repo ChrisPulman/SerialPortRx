@@ -17,8 +17,8 @@
     /// <summary>
     /// Serial Port Rx
     /// </summary>
-    /// <seealso cref="System.IDisposable"/>
-    public class SerialPortRx : IDisposable, ISerialPortRx
+    /// <seealso cref="CP.IO.Ports.ISerialPortRx"/>
+    public class SerialPortRx : ISerialPortRx
     {
         private ISubject<char> dataReceived = new Subject<char>();
         private IDisposable disposablePort;
@@ -159,6 +159,14 @@
         public Handshake Handshake { get; set; } = Handshake.None;
 
         /// <summary>
+        /// Gets a value indicating whether this instance is disposed.
+        /// </summary>
+        /// <value><c>true</c> if this instance is disposed; otherwise, <c>false</c>.</value>
+        [Browsable(true)]
+        [MonitoringDescription("IsDisposed")]
+        public bool IsDisposed { get; private set; } = false;
+
+        /// <summary>
         /// Gets the is open.
         /// </summary>
         /// <value>The is open.</value>
@@ -188,7 +196,7 @@
         /// Gets the port names.
         /// </summary>
         /// <value>The port names.</value>
-        public IObservable<string[]> PortNames => Observable.Create<string[]>(obs =>
+        public static IObservable<string[]> PortNames => Observable.Create<string[]>(obs =>
         {
             string[] compare = null;
             return Observable.Interval(TimeSpan.FromMilliseconds(500)).Subscribe(_ =>
@@ -222,6 +230,9 @@
         /// Gets or sets the stop bits.
         /// </summary>
         /// <value>The stop bits.</value>
+        [Browsable(true)]
+        [DefaultValue(StopBits.One)]
+        [MonitoringDescription("StopBits")]
         public StopBits StopBits { get; set; } = StopBits.One;
 
         /// <summary>
@@ -325,7 +336,7 @@
         /// </summary>
         public void Dispose()
         {
-            this.disposablePort.Dispose();
+            Dispose(true);
         }
 
         /// <summary>
@@ -392,6 +403,26 @@
         public void WriteLine(string text)
         {
             this.writeStringLine?.OnNext(text);
+        }
+
+        /// <summary>
+        /// Releases unmanaged and - optionally - managed resources.
+        /// </summary>
+        /// <param name="disposing">
+        /// <c>true</c> to release both managed and unmanaged resources; <c>false</c> to release only
+        /// unmanaged resources.
+        /// </param>
+        protected virtual void Dispose(bool disposing)
+        {
+            if (!IsDisposed)
+            {
+                if (disposing)
+                {
+                    this.disposablePort?.Dispose();
+                }
+
+                IsDisposed = true;
+            }
         }
     }
 }

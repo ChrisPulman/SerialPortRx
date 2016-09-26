@@ -7,7 +7,7 @@
     /// <summary>
     /// Serial Port Rx interface
     /// </summary>
-    public interface ISerialPortRx
+    public interface ISerialPortRx : IDisposable
     {
         /// <summary>
         /// Gets or sets the baud rate.
@@ -40,6 +40,12 @@
         Handshake Handshake { get; set; }
 
         /// <summary>
+        /// Gets a value indicating whether this instance is disposed.
+        /// </summary>
+        /// <value><c>true</c> if this instance is disposed; otherwise, <c>false</c>.</value>
+        bool IsDisposed { get; }
+
+        /// <summary>
         /// Gets the is open.
         /// </summary>
         /// <value>The is open.</value>
@@ -56,12 +62,6 @@
         /// </summary>
         /// <value>The port.</value>
         string PortName { get; set; }
-
-        /// <summary>
-        /// Gets the port names.
-        /// </summary>
-        /// <value>The port names.</value>
-        IObservable<string[]> PortNames { get; }
 
         /// <summary>
         /// Gets or sets the read timeout.
@@ -85,11 +85,6 @@
         /// Closes this instance.
         /// </summary>
         void Close();
-
-        /// <summary>
-        /// Releases unmanaged and - optionally - managed resources.
-        /// </summary>
-        void Dispose();
 
         /// <summary>
         /// Opens this instance.
