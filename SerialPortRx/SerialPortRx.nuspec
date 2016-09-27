@@ -10,6 +10,7 @@
     <requireLicenseAcceptance>false</requireLicenseAcceptance>
     <description>$description$</description>
     <copyright>Copyright © $author$ 2016</copyright>
+    <projectUrl>https://github.com/chrispulman/SerialPortRx</projectUrl>
     <dependencies>
       <dependency id="ReactiveProperty" version="[2.9.0]" />
     </dependencies>
