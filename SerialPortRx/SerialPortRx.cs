@@ -9,6 +9,7 @@
     using System.Reactive.Disposables;
     using System.Reactive.Linq;
     using System.Reactive.Subjects;
+    using System.Text;
     using System.Threading;
     using System.Threading.Tasks;
     using Reactive.Bindings;
@@ -144,6 +145,15 @@
         public IObservable<char> DataReceived => dataReceived.AsObservable().Retry().Publish().RefCount();
 
         /// <summary>
+        /// Gets or sets the encoding.
+        /// </summary>
+        /// <value>The encoding.</value>
+        [Browsable(false)]
+        [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
+        [MonitoringDescription("Encoding")]
+        public Encoding Encoding { get; set; } = new ASCIIEncoding();
+
+        /// <summary>
         /// Gets the error received.
         /// </summary>
         /// <value>The error received.</value>
@@ -261,6 +271,7 @@
                 port.Handshake = this.Handshake;
                 port.ReadTimeout = this.ReadTimeout;
                 port.WriteTimeout = this.WriteTimeout;
+                port.Encoding = this.Encoding;
                 port.Open();
                 isOpen.Value = port.IsOpen;
 
