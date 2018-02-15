@@ -143,7 +143,7 @@ namespace CP.IO.Ports
                                             Observable.Create<T>(obs => {
                                                 return @this.Subscribe(list => {
                                                     foreach (var item in list) {
-                                                        if (!EqualityComparer<T>.Default.Equals(item, default)) {
+                                                        if (!EqualityComparer<T>.Default.Equals(item, default(T))) {
                                                             obs.OnNext(item);
                                                         }
                                                     }
