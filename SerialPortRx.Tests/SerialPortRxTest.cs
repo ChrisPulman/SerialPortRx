@@ -12,7 +12,7 @@
         [Category("SerialPortRx")]
         public void SimpleConstructor()
         {
-            SerialPortRx src = new SerialPortRx();
+            var src = new SerialPortRx();
             src.Dispose();
             Assert.That(src.IsDisposed, Is.True);
         }
@@ -21,7 +21,7 @@
         [Category("SerialPortRx")]
         public void SimpleConstructorWithPort()
         {
-            SerialPortRx src = new SerialPortRx("COM1");
+            var src = new SerialPortRx("COM1");
             Assert.That(src.PortName, Is.EqualTo("COM1"));
             src.Dispose();
             Assert.That(src.IsDisposed, Is.True);
@@ -31,7 +31,7 @@
         [Category("SerialPortRx")]
         public void SimpleConstructorWithPortandBaud()
         {
-            SerialPortRx src = new SerialPortRx("COM1", 9600);
+            var src = new SerialPortRx("COM1", 9600);
             Assert.That(src.PortName, Is.EqualTo("COM1"));
             Assert.That(src.BaudRate, Is.EqualTo(9600));
             src.Dispose();
@@ -42,7 +42,7 @@
         [Category("SerialPortRx")]
         public void SimpleConstructorWithPortandBaudAndDatabits()
         {
-            SerialPortRx src = new SerialPortRx("COM1", 9600, 8);
+            var src = new SerialPortRx("COM1", 9600, 8);
             Assert.That(src.PortName, Is.EqualTo("COM1"));
             Assert.That(src.BaudRate, Is.EqualTo(9600));
             Assert.That(src.DataBits, Is.EqualTo(8));

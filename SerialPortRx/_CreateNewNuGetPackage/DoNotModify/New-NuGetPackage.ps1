@@ -154,7 +154,7 @@
 
 	.NOTES
 	Author: Daniel Schroeder
-	Version: 1.5.6
+	Version: 1.5.9
 	
 	This script is designed to be called from PowerShell or ran directly from Windows Explorer.
 	If this script is ran without the $NuSpecFilePath, $ProjectFilePath, and $PackageFilePath parameters, it will automatically search for a .nuspec, project, or package file in the 
@@ -177,7 +177,7 @@ param
 
 	[parameter(Position=2,Mandatory=$false,HelpMessage="The new version number to use for the NuGet Package.",ParameterSetName="PackUsingNuSpec")]
     [parameter(Position=2,Mandatory=$false,HelpMessage="The new version number to use for the NuGet Package.",ParameterSetName="PackUsingProject")]
-	[ValidatePattern('(?i)(^(\d+(\.\d+){1,3})$)|(^(\d+\.\d+\.\d+-[a-zA-Z0-9\-\.\+]+)$)|(^(\$version\$)$)|(^$)')]	# This validation is duplicated in the Update-NuSpecFile function, so update it in both places. This regex does not represent Sematic Versioning, but the versioning that NuGet.exe allows.
+	[ValidatePattern('(?i)(^\d+(\.\d+){1,3}(-[a-zA-Z0-9\-\.\+]+)?$)|(^(\$version\$)$)|(^$)')]	# This validation is duplicated in the Update-NuSpecFile function, so update it in both places. This regex does not represent Sematic Versioning, but the versioning that NuGet.exe allows.
 	[Alias("Version")]
 	[Alias("V")]
 	[string] $VersionNumber,
@@ -294,6 +294,7 @@ $TF_EXE_NO_PENDING_CHANGES_MESSAGE = 'There are no pending changes.'
 $TF_EXE_KEYWORD_IN_PENDING_CHANGES_MESSAGE = 'change\(s\)'	# Escape regular expression characters.
 
 # NuGet.exe output strings.
+$NUGET_EXE_VERSION_NUMBER_REGEX = [regex] "(?i)(NuGet Version: (?<Version>\d+\.\d+\.\d+\.\d+).)"
 $NUGET_EXE_SUCCESSFULLY_CREATED_PACKAGE_MESSAGE_REGEX = [regex] "(?i)(Successfully created package '(?<FilePath>.*?)'.)"
 $NUGET_EXE_SUCCESSFULLY_PUSHED_PACKAGE_MESSAGE = 'Your package was pushed.'
 $NUGET_EXE_SUCCESSFULLY_SAVED_API_KEY_MESSAGE = "The API Key '{0}' was saved for '{1}'."
@@ -402,7 +403,7 @@ function Update-NuSpecFile
 		}
 		
 		# The script's parameter validation does not seem to be enforced (probably because this is inside a function), so re-enforce it here.
-		$rxVersionNumberValidation = [regex] '(?i)(^(\d+(\.\d+){1,3})$)|(^(\d+\.\d+\.\d+-[a-zA-Z0-9\-\.\+]+)$)|(^(\$version\$)$)|(^$)'	# This validation is duplicated in the Update-NuSpecFile function, so update it in both places. This regex does not represent Sematic Versioning, but the versioning that NuGet.exe allows.
+		$rxVersionNumberValidation = [regex] '(?i)(^\d+(\.\d+){1,3}(-[a-zA-Z0-9\-\.\+]+)?$)|(^(\$version\$)$)|(^$)'	# This validation is duplicated in the script's $Version parameter validation, so update it in both places. This regex does not represent Sematic Versioning, but the versioning that NuGet.exe allows.
 
 		# If the user cancelled the prompt or did not provide a valid version number, exit the script.
 		if ((Test-StringIsNullOrWhitespace $VersionNumber) -or !$rxVersionNumberValidation.IsMatch($VersionNumber))
@@ -1126,8 +1127,39 @@ try
 	}
 	
 	# Display the version of the NuGet.exe. This information is the first line of the NuGet Help output.
-	$nuGetVersionString = ($helpOutput -split "`r`n")[0]
-	Write-Verbose "Using $($nuGetVersionString)."
+	$nuGetVersionLine = ($helpOutput -split "`r`n")[0]
+	Write-Verbose "Using $($nuGetVersionLine)."
+	
+	# Force NuGet.exe to output English so that we can properly parse and match against it's output.
+	# The -ForceEnglishOutput switch was only added in NuGet.exe v3.5, so default to using it, and remove it if the version is less than v3.5.
+	$nuGetForceEnglishOutputSwitch = " -ForceEnglishOutput"
+	$PackOptions += $nuGetForceEnglishOutputSwitch
+	[array]$nuGetVersionParts = $null
+    $nugetVersionMatch = $NUGET_EXE_VERSION_NUMBER_REGEX.Match($nuGetVersionLine)
+    if ($nugetVersionMatch.Success)
+    {
+		# Get the version of NuGet.exe being used.
+	    $nuGetVersionString = $nugetVersionMatch.Groups["Version"].Value
+		
+		if (!(Test-StringIsNullOrWhitespace $nuGetVersionString))
+		{
+			# If we are using a version of NuGet.exe less than v3.5, remove the switch to force English output.
+			$nuGetVersionParts = $nuGetVersionString -split "\."
+			if ($nuGetVersionParts.Count -ge 2)
+			{
+				if ($nuGetVersionParts[0] -le 2 -or ($nuGetVersionParts[0] -eq 3 -and $nuGetVersionParts[1] -lt 5))
+				{
+					$PackOptions = $PackOptions.Replace($nuGetForceEnglishOutputSwitch, [string]::Empty)
+				}
+			}
+		}
+    }
+	
+	# If we weren't actually able to determine which version of NuGet.exe is being used, display a warning.
+	if ($nuGetVersionParts -eq $null -or $nuGetVersionParts.Count -lt 2)
+    {
+	    Write-Warning "Could not determine which version of NuGet.exe is being used."
+    }
 	
 	# Declare the backup directory to create the NuGet Package in, as not all code paths will set it (i.e. when pushing an existing package), but we check it later.
 	$defaultDirectoryPathToPutNuGetPackageIn = $null
@@ -1237,14 +1269,17 @@ try
 	{
         $sourceToPushPackageTo = $match.Groups["Source"].Value
             
-        # Strip off any quotes around the address.
+        # Strip off any single or double quotes around the address.
         $sourceToPushPackageTo = $sourceToPushPackageTo.Trim([char[]]@("'", '"'))
 	}
-    # Else they did not provide an explicit source to push to.
+    # Else they did not provide an explicit source to push to, so set it to the default.
 	else
 	{
-		# So assume they are pushing to the typical default source.
+		# Assume they are pushing to the typical default source.
         $sourceToPushPackageTo = $DEFAULT_NUGET_SOURCE_TO_PUSH_TO
+		
+		# Update the PushOptions to include the default source (as -Source is now a required parameter as of NuGet.exe v3.4.2).
+		$PushOptions = $PushOptions.Trim() + " -Source $sourceToPushPackageTo"
 	}
 
 	# If the switch to push the package to the gallery was not provided and we are allowed to prompt, prompt the user if they want to push the package.

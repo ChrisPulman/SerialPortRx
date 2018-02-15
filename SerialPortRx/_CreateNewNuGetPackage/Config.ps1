@@ -3,7 +3,7 @@
 #
 # If you have modified this script:
 #	- if you uninstall the "Create New NuGet Package From Project After Each Build" package, this file may not be removed automatically; you may need to manually delete it.
-#	- if you update the "Create New NuGet Package From Project After Each Build" package, this file may not be updated unless you specify it to be overwritten, either by
+#	- if you update the "Create New NuGet Package From Project After Each Build" package, this file may not be updated unless you specify it to be overwritten, either by 
 #		confirming the overwrite if prompted, or by providing the "-FileConflictAction Overwrite" parameter when installing from the command line.
 #		If you overwrite this file then your custom changes will be lost, and you will need to manually reapply your changes.
 #		If you are not using source control, I recommend backing up this file before updating the package so you can see what changes you had made to it.
@@ -18,15 +18,15 @@
 # e.g. "" (use assembly's version), "1.2.3" (stable version), "1.2.3-alpha" (prerelease version).
 $versionNumber = ""
 
-# Specify any Release Notes for this package.
+# Specify any Release Notes for this package. 
 # These will only be included in the package if you have a .nuspec file for the project in the same directory as the project file.
 $releaseNotes = ""
 
 # Specify a specific Configuration and/or Platform to only create a NuGet package when building the project with this Configuration and/or Platform.
 #	e.g. $configuration = "Release"
 #		 $platform = "AnyCPU"
-$configuration = "Release"
-$platform = "AnyCPU"
+$configuration = ""
+$platform = ""
 
 # Specify any NuGet Pack Properties to pass to MsBuild.
 #	e.g. $packProperties = "TargetFrameworkVersion=v3.5;Optimize=true"
@@ -47,7 +47,8 @@ $packOptions = ""
 # Specify $true if the generated .nupkg file should be renamed to include the Configuration and Platform that was used to build the project, $false if not.
 #	e.g. If $true, MyProject.1.1.5.6.nupkg might be renamed to MyProject.1.1.5.6.Debug.AnyCPU.nupkg
 #	e.g. If $true, MyProject.1.1.5.6-beta1.nupkg might re renamed to MyProject.1.1.5.6-beta1.Release.x86.nupkg
-$appendConfigurationAndPlatformToNuGetPackageFileName = $false
+$appendConfigurationAndPlatformToNuGetPackageFileName = $true
+
 
 #------------------------------------------------
 # Push parameters used to upload the .nupkg file to the NuGet gallery.

@@ -21,13 +21,13 @@
     /// <seealso cref="CP.IO.Ports.ISerialPortRx"/>
     public class SerialPortRx : ISerialPortRx
     {
-        private ISubject<char> dataReceived = new Subject<char>();
+        private readonly ISubject<char> dataReceived = new Subject<char>();
+        private readonly ISubject<Exception> errors = new Subject<Exception>();
+        private readonly ISubject<Tuple<byte[], int, int>> writeByte = new Subject<Tuple<byte[], int, int>>();
+        private readonly ISubject<Tuple<char[], int, int>> writeChar = new Subject<Tuple<char[], int, int>>();
+        private readonly ISubject<string> writeString = new Subject<string>();
+        private readonly ISubject<string> writeStringLine = new Subject<string>();
         private IDisposable disposablePort;
-        private ISubject<Exception> errors = new Subject<Exception>();
-        private ISubject<Tuple<byte[], int, int>> writeByte = new Subject<Tuple<byte[], int, int>>();
-        private ISubject<Tuple<char[], int, int>> writeChar = new Subject<Tuple<char[], int, int>>();
-        private ISubject<string> writeString = new Subject<string>();
-        private ISubject<string> writeStringLine = new Subject<string>();
 
         /// <summary>
         /// Initializes a new instance of the <see cref="SerialPortRx"/> class.
@@ -40,12 +40,12 @@
         /// <param name="handshake">The handshake.</param>
         public SerialPortRx(string port, int baudRate, int dataBits, Parity parity, StopBits stopBits, Handshake handshake)
         {
-            this.PortName = port;
-            this.BaudRate = baudRate;
-            this.DataBits = dataBits;
-            this.Parity = parity;
-            this.StopBits = stopBits;
-            this.Handshake = handshake;
+            PortName = port;
+            BaudRate = baudRate;
+            DataBits = dataBits;
+            Parity = parity;
+            StopBits = stopBits;
+            Handshake = handshake;
         }
 
         /// <summary>
@@ -58,11 +58,11 @@
         /// <param name="stopBits">The stop bits.</param>
         public SerialPortRx(string port, int baudRate, int dataBits, Parity parity, StopBits stopBits)
         {
-            this.PortName = port;
-            this.BaudRate = baudRate;
-            this.DataBits = dataBits;
-            this.Parity = parity;
-            this.StopBits = stopBits;
+            PortName = port;
+            BaudRate = baudRate;
+            DataBits = dataBits;
+            Parity = parity;
+            StopBits = stopBits;
         }
 
         /// <summary>
@@ -74,10 +74,10 @@
         /// <param name="parity">The parity.</param>
         public SerialPortRx(string port, int baudRate, int dataBits, Parity parity)
         {
-            this.PortName = port;
-            this.BaudRate = baudRate;
-            this.DataBits = dataBits;
-            this.Parity = parity;
+            PortName = port;
+            BaudRate = baudRate;
+            DataBits = dataBits;
+            Parity = parity;
         }
 
         /// <summary>
@@ -88,9 +88,9 @@
         /// <param name="dataBits">The data bits.</param>
         public SerialPortRx(string port, int baudRate, int dataBits)
         {
-            this.PortName = port;
-            this.BaudRate = baudRate;
-            this.DataBits = dataBits;
+            PortName = port;
+            BaudRate = baudRate;
+            DataBits = dataBits;
         }
 
         /// <summary>
@@ -100,18 +100,15 @@
         /// <param name="baudRate">The baud rate.</param>
         public SerialPortRx(string port, int baudRate)
         {
-            this.PortName = port;
-            this.BaudRate = baudRate;
+            PortName = port;
+            BaudRate = baudRate;
         }
 
         /// <summary>
         /// Initializes a new instance of the <see cref="SerialPortRx"/> class.
         /// </summary>
         /// <param name="port">The port.</param>
-        public SerialPortRx(string port)
-        {
-            this.PortName = port;
-        }
+        public SerialPortRx(string port) => PortName = port;
 
         /// <summary>
         /// Initializes a new instance of the <see cref="SerialPortRx"/> class.
@@ -119,6 +116,29 @@
         public SerialPortRx()
         {
         }
+
+        /// <summary>
+        /// Gets the port names.
+        /// </summary>
+        /// <value>The port names.</value>
+        public static IObservable<string[]> PortNames => Observable.Create<string[]>(obs => {
+            string[] compare = null;
+            return Observable.Interval(TimeSpan.FromMilliseconds(500)).Subscribe(_ => {
+                var compareNew = SerialPort.GetPortNames();
+                if (compareNew.Length == 0) {
+                    compareNew = new string[] { "NoPorts" };
+                }
+
+                if (compare == null) {
+                    compare = compareNew;
+                    obs.OnNext(compareNew);
+                }
+                if (string.Concat(compare) != string.Concat(compareNew)) {
+                    obs.OnNext(compareNew);
+                    compare = compareNew;
+                }
+            });
+        }).Retry().Publish().RefCount();
 
         /// <summary>
         /// Gets or sets the baud rate.
@@ -142,7 +162,7 @@
         /// Gets the data received.
         /// </summary>
         /// <value>The data received.</value>
-        public IObservable<char> DataReceived => dataReceived.AsObservable().Retry().Publish().RefCount();
+        public IObservable<char> DataReceived => dataReceived.Retry().Publish().RefCount();
 
         /// <summary>
         /// Gets or sets the encoding.
@@ -157,7 +177,7 @@
         /// Gets the error received.
         /// </summary>
         /// <value>The error received.</value>
-        public IObservable<Exception> ErrorReceived => errors.AsObservable().Distinct(ex => ex.Message).Retry().Publish().RefCount();
+        public IObservable<Exception> ErrorReceived => errors.Distinct(ex => ex.Message).Retry().Publish().RefCount();
 
         /// <summary>
         /// Gets or sets the handshake.
@@ -203,31 +223,6 @@
         public string PortName { get; set; } = "COM1";
 
         /// <summary>
-        /// Gets the port names.
-        /// </summary>
-        /// <value>The port names.</value>
-        public static IObservable<string[]> PortNames => Observable.Create<string[]>(obs =>
-        {
-            string[] compare = null;
-            return Observable.Interval(TimeSpan.FromMilliseconds(500)).Subscribe(_ =>
-             {
-                 var compareNew = SerialPort.GetPortNames();
-                 if (compareNew.Length == 0)
-                     compareNew = new string[] { "NoPorts" };
-                 if (compare == null)
-                 {
-                     compare = compareNew;
-                     obs.OnNext(compareNew);
-                 }
-                 if (string.Join("", compare) != string.Join("", compareNew))
-                 {
-                     obs.OnNext(compareNew);
-                     compare = compareNew;
-                 }
-             });
-        }).Retry().Publish().RefCount();
-
-        /// <summary>
         /// Gets or sets the read timeout.
         /// </summary>
         /// <value>The read timeout.</value>
@@ -254,24 +249,21 @@
         [MonitoringDescription("WriteTimeout")]
         public int WriteTimeout { get; set; } = -1;
 
-        private IObservable<Unit> Connect => Observable.Create<Unit>(obs =>
-        {
+        private IObservable<Unit> Connect => Observable.Create<Unit>(obs => {
             var dis = new CompositeDisposable();
 
             // Check that the port exists
-            if (!SerialPort.GetPortNames().Any(name => name.Equals(this.PortName)))
-            {
-                obs.OnError(new Exception($"Serial Port {this.PortName} does not exist"));
-            }
-            else
-            {
+            if (!SerialPort.GetPortNames().Any(name => name.Equals(PortName))) {
+                obs.OnError(new Exception($"Serial Port {PortName} does not exist"));
+            } else {
+
                 // Setup Com Port
-                var port = new SerialPort(this.PortName, this.BaudRate, this.Parity, this.DataBits, this.StopBits);
+                var port = new SerialPort(PortName, BaudRate, Parity, DataBits, StopBits);
                 port.AddTo(dis);
-                port.Handshake = this.Handshake;
-                port.ReadTimeout = this.ReadTimeout;
-                port.WriteTimeout = this.WriteTimeout;
-                port.Encoding = this.Encoding;
+                port.Handshake = Handshake;
+                port.ReadTimeout = ReadTimeout;
+                port.WriteTimeout = WriteTimeout;
+                port.Encoding = Encoding;
                 port.Open();
                 isOpen.Value = port.IsOpen;
 
@@ -291,42 +283,29 @@
                 dataStream.Subscribe(dataReceived.OnNext, obs.OnError).AddTo(dis);
 
                 // setup Write streams
-                writeString.Subscribe(x =>
-                {
-                    try { port.Write(x); }
-                    catch (Exception ex)
-                    {
+                writeString.Subscribe(x => {
+                    try { port?.Write(x); } catch (Exception ex) {
                         obs.OnError(ex);
                     }
                 }, obs.OnError).AddTo(dis);
-                writeStringLine.Subscribe(x =>
-                {
-                    try { port.WriteLine(x); }
-                    catch (Exception ex)
-                    {
+                writeStringLine.Subscribe(x => {
+                    try { port?.WriteLine(x); } catch (Exception ex) {
                         obs.OnError(ex);
                     }
                 }, obs.OnError).AddTo(dis);
-                writeByte.Subscribe(x =>
-                {
-                    try { port.Write(x.Item1, x.Item2, x.Item3); }
-                    catch (Exception ex)
-                    {
+                writeByte.Subscribe(x => {
+                    try { port?.Write(x.Item1, x.Item2, x.Item3); } catch (Exception ex) {
                         obs.OnError(ex);
                     }
                 }, obs.OnError).AddTo(dis);
-                writeChar.Subscribe(x =>
-                {
-                    try { port.Write(x.Item1, x.Item2, x.Item3); }
-                    catch (Exception ex)
-                    {
+                writeChar.Subscribe(x => {
+                    try { port?.Write(x.Item1, x.Item2, x.Item3); } catch (Exception ex) {
                         obs.OnError(ex);
                     }
                 }, obs.OnError).AddTo(dis);
             }
-            return Disposable.Create(() =>
-            {
-                this.isOpen.Value = false;
+            return Disposable.Create(() => {
+                isOpen.Value = false;
                 dis.Dispose();
             });
         }).OnErrorRetry((Exception ex) => errors.OnNext(ex)).Publish().RefCount();
@@ -364,7 +343,7 @@
         /// <param name="text">The text.</param>
         public void Write(string text)
         {
-            this.writeString?.OnNext(text);
+            writeString?.OnNext(text);
         }
 
         /// <summary>
@@ -375,7 +354,7 @@
         /// <param name="count">The count.</param>
         public void Write(byte[] byteArray, int offset, int count)
         {
-            this.writeByte?.OnNext(new Tuple<byte[], int, int>(byteArray, offset, count));
+            writeByte?.OnNext(new Tuple<byte[], int, int>(byteArray, offset, count));
         }
 
         /// <summary>
@@ -384,7 +363,7 @@
         /// <param name="byteArray">The byte array.</param>
         public void Write(byte[] byteArray)
         {
-            this.writeByte?.OnNext(new Tuple<byte[], int, int>(byteArray, 0, byteArray.Length));
+            writeByte?.OnNext(new Tuple<byte[], int, int>(byteArray, 0, byteArray.Length));
         }
 
         /// <summary>
@@ -393,7 +372,7 @@
         /// <param name="charArray">The character array.</param>
         public void Write(char[] charArray)
         {
-            this.writeChar?.OnNext(new Tuple<char[], int, int>(charArray, 0, charArray.Length));
+            writeChar?.OnNext(new Tuple<char[], int, int>(charArray, 0, charArray.Length));
         }
 
         /// <summary>
@@ -404,7 +383,7 @@
         /// <param name="count">The count.</param>
         public void Write(char[] charArray, int offset, int count)
         {
-            this.writeChar?.OnNext(new Tuple<char[], int, int>(charArray, offset, count));
+            writeChar?.OnNext(new Tuple<char[], int, int>(charArray, offset, count));
         }
 
         /// <summary>
@@ -413,7 +392,7 @@
         /// <param name="text">The text.</param>
         public void WriteLine(string text)
         {
-            this.writeStringLine?.OnNext(text);
+            writeStringLine?.OnNext(text);
         }
 
         /// <summary>
@@ -425,11 +404,9 @@
         /// </param>
         protected virtual void Dispose(bool disposing)
         {
-            if (!IsDisposed)
-            {
-                if (disposing)
-                {
-                    this.disposablePort?.Dispose();
+            if (!IsDisposed) {
+                if (disposing) {
+                    disposablePort?.Dispose();
                 }
 
                 IsDisposed = true;
