@@ -108,7 +108,7 @@
         /// Initializes a new instance of the <see cref="SerialPortRx"/> class.
         /// </summary>
         /// <param name="port">The port.</param>
-        public SerialPortRx(string port) => PortName = port;
+        public SerialPortRx(string port) { PortName = port; }
 
         /// <summary>
         /// Initializes a new instance of the <see cref="SerialPortRx"/> class.
