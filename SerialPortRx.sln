@@ -1,7 +1,7 @@
 ﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
-# Visual Studio 14
-VisualStudioVersion = 14.0.25420.1
+# Visual Studio 15
+VisualStudioVersion = 15.0.27703.2018
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SerialPortRx", "SerialPortRx\SerialPortRx.csproj", "{CDA3585B-D3D6-4BE4-9A6B-582AB5DE0B8F}"
 EndProject
@@ -10,8 +10,6 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "ConfigFiles", "ConfigFiles"
 		appveyor.yml = appveyor.yml
 		README.md = README.md
 	EndProjectSection
-EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SerialPortRx.Tests", "SerialPortRx.Tests\SerialPortRx.Tests.csproj", "{155FAA12-BEC6-45F1-905F-22523E412F47}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -23,12 +21,11 @@ Global
 		{CDA3585B-D3D6-4BE4-9A6B-582AB5DE0B8F}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{CDA3585B-D3D6-4BE4-9A6B-582AB5DE0B8F}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{CDA3585B-D3D6-4BE4-9A6B-582AB5DE0B8F}.Release|Any CPU.Build.0 = Release|Any CPU
-		{155FAA12-BEC6-45F1-905F-22523E412F47}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{155FAA12-BEC6-45F1-905F-22523E412F47}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{155FAA12-BEC6-45F1-905F-22523E412F47}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{155FAA12-BEC6-45F1-905F-22523E412F47}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {8816E046-4B58-4E9B-8877-26360A8204C6}
 	EndGlobalSection
 EndGlobal
