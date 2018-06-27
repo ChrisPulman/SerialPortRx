@@ -13,7 +13,6 @@
     <projectUrl>https://github.com/chrispulman/SerialPortRx</projectUrl>
     <dependencies>
       <dependency id="RxProperty" version="[4.2.2]" />
-      <dependency id="System.Reactive" version="[3.1.1]" />
     </dependencies>
   </metadata>
   <files>
