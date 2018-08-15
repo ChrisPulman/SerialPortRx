@@ -12,7 +12,7 @@
     <copyright>Copyright © $author$ 2018</copyright>
     <projectUrl>https://github.com/chrispulman/SerialPortRx</projectUrl>
     <dependencies>
-      <dependency id="RxProperty" version="[4.2.2]" />
+      <dependency id="RxProperty" version="[5.2.0.1]" />
     </dependencies>
   </metadata>
   <files>
