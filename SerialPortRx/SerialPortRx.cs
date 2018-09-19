@@ -256,7 +256,6 @@
             if (!SerialPort.GetPortNames().Any(name => name.Equals(PortName))) {
                 obs.OnError(new Exception($"Serial Port {PortName} does not exist"));
             } else {
-
                 // Setup Com Port
                 var port = new SerialPort(PortName, BaudRate, Parity, DataBits, StopBits);
                 port.AddTo(dis);

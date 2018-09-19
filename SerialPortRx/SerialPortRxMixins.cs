@@ -134,6 +134,20 @@ namespace CP.IO.Ports
         });
 
         /// <summary>
+        /// Monitors the received observer.
+        /// </summary>
+        /// <param name="this">The this.</param>
+        /// <returns></returns>
+        public static IObservable<EventPattern<SerialDataReceivedEventArgs>> DataReceivedObserver(this SerialPort @this) => Observable.FromEventPattern<SerialDataReceivedEventHandler, SerialDataReceivedEventArgs>(h => @this.DataReceived += h, h => @this.DataReceived -= h);
+
+        /// <summary>
+        /// Monitors the Errors observer.
+        /// </summary>
+        /// <param name="this">The this.</param>
+        /// <returns></returns>
+        public static IObservable<EventPattern<SerialErrorReceivedEventArgs>> ErrorReceivedObserver(this SerialPort @this) => Observable.FromEventPattern<SerialErrorReceivedEventHandler, SerialErrorReceivedEventArgs>(h => @this.ErrorReceived += h, h => @this.ErrorReceived -= h);
+
+        /// <summary>
         /// Fors the each.
         /// </summary>
         /// <typeparam name="T"></typeparam>
@@ -247,22 +261,8 @@ where TException : Exception =>
         /// <returns></returns>
         public static IObservable<bool> WhileIsOpen(this SerialPortRx @this, TimeSpan timespan) =>
             Observable.Defer(() => Observable.Create<bool>(obs => {
-                var isOpen = Observable.Interval(timespan).CombineLatest(@this.IsOpen.DistinctUntilChanged(),(a,b)=>b).Where(x => x);
+                var isOpen = Observable.Interval(timespan).CombineLatest(@this.IsOpen.DistinctUntilChanged(), (a, b) => b).Where(x => x);
                 return isOpen.Subscribe(obs);
             }));
-
-        /// <summary>
-        /// Monitors the received observer.
-        /// </summary>
-        /// <param name="this">The this.</param>
-        /// <returns></returns>
-        internal static IObservable<EventPattern<SerialDataReceivedEventArgs>> DataReceivedObserver(this SerialPort @this) => Observable.FromEventPattern<SerialDataReceivedEventHandler, SerialDataReceivedEventArgs>(h => @this.DataReceived += h, h => @this.DataReceived -= h);
-
-        /// <summary>
-        /// Monitors the Errors observer.
-        /// </summary>
-        /// <param name="this">The this.</param>
-        /// <returns></returns>
-        internal static IObservable<EventPattern<SerialErrorReceivedEventArgs>> ErrorReceivedObserver(this SerialPort @this) => Observable.FromEventPattern<SerialErrorReceivedEventHandler, SerialErrorReceivedEventArgs>(h => @this.ErrorReceived += h, h => @this.ErrorReceived -= h);
     }
 }

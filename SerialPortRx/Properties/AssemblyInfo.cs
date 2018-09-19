@@ -3,7 +3,7 @@ using System.Runtime.InteropServices;
 
 [assembly: AssemblyTitle("SerialPortRx")]
 [assembly: AssemblyDescription("An Observable Com port extension of System.IO.Ports.SerialPort")]
-[assembly: AssemblyConfiguration(".Net 4.6.1")]
+[assembly: AssemblyConfiguration(".Net 4.7.1")]
 [assembly: AssemblyCompany("ChrisPulman")]
 [assembly: AssemblyProduct("SerialPortRx")]
 [assembly: AssemblyCopyright("Copyright © https://github.com/ChrisPulman 2018")]
@@ -11,5 +11,5 @@ using System.Runtime.InteropServices;
 [assembly: AssemblyCulture("")]
 [assembly: ComVisible(false)]
 [assembly: Guid("cda3585b-d3d6-4be4-9a6b-582ab5de0b8f")]
-[assembly: AssemblyVersion("1.1.0")]
-[assembly: AssemblyFileVersion("1.1.0")]
+[assembly: AssemblyVersion("1.2.0")]
+[assembly: AssemblyFileVersion("1.2.0")]
