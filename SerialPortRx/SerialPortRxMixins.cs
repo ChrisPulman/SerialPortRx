@@ -261,7 +261,7 @@ where TException : Exception =>
         /// <returns></returns>
         public static IObservable<bool> WhileIsOpen(this SerialPortRx @this, TimeSpan timespan) =>
             Observable.Defer(() => Observable.Create<bool>(obs => {
-                var isOpen = Observable.Interval(timespan).CombineLatest(@this.IsOpen.DistinctUntilChanged(), (a, b) => b).Where(x => x);
+                var isOpen = Observable.Interval(timespan).CombineLatest(@this.isOpen, (a, b) => b).Where(x => x);
                 return isOpen.Subscribe(obs);
             }));
     }

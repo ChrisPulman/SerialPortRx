@@ -49,7 +49,13 @@
         /// Gets the is open.
         /// </summary>
         /// <value>The is open.</value>
-        IReadOnlyReactiveProperty<bool> IsOpen { get; }
+        bool IsOpen { get; }
+
+        /// <summary>
+        /// Gets the is open observable.
+        /// </summary>
+        /// <value>The is open observable.</value>
+        IObservable<bool> IsOpenObservable { get; }
 
         /// <summary>
         /// Gets or sets the parity.

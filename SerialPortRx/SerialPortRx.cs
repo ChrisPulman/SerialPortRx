@@ -202,7 +202,13 @@
         /// <value>The is open.</value>
         [Browsable(true)]
         [MonitoringDescription("IsOpen")]
-        public IReadOnlyReactiveProperty<bool> IsOpen => isOpen.ToReadOnlyReactiveProperty();
+        public bool IsOpen => isOpen.Value;
+
+        /// <summary>
+        /// Gets the is open observable.
+        /// </summary>
+        /// <value>The is open observable.</value>
+        public IObservable<bool> IsOpenObservable => Observable.Create<bool>(obs => isOpen.Subscribe(obs));
 
         /// <summary>
         /// Gets or sets the parity.
@@ -309,7 +315,7 @@
             });
         }).OnErrorRetry((Exception ex) => errors.OnNext(ex)).Publish().RefCount();
 
-        private IReactiveProperty<bool> isOpen { get; } = new ReactiveProperty<bool>();
+        internal IReactiveProperty<bool> isOpen { get; } = new ReactiveProperty<bool>();
 
         /// <summary>
         /// Closes this instance.
