@@ -121,9 +121,9 @@
         /// Gets the port names.
         /// </summary>
         /// <value>The port names.</value>
-        public static IObservable<string[]> PortNames => Observable.Create<string[]>(obs => {
+        public static IObservable<string[]> PortNames (int timeOut = 500) => Observable.Create<string[]>(obs => {
             string[] compare = null;
-            return Observable.Interval(TimeSpan.FromMilliseconds(500)).Subscribe(_ => {
+            return Observable.Interval(TimeSpan.FromMilliseconds(timeOut)).Subscribe(_ => {
                 var compareNew = SerialPort.GetPortNames();
                 if (compareNew.Length == 0) {
                     compareNew = new string[] { "NoPorts" };
