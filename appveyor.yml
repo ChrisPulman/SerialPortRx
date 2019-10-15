@@ -1,5 +1,5 @@
 version: 1.2.{build}
-image: Visual Studio 2017
+image: Visual Studio 2019
 configuration: Release
 platform: Any CPU
 nuget:
@@ -14,4 +14,4 @@ artifacts:
 deploy:
 - provider: NuGet
   api_key:
-    secure: QgtujEGOWXZ7nY+Ea0IEvtNPQx2ytMqgXxMOczQB0ZhhaFOg480+Esd8dvzsAxj3
+    secure: CIdiwHmj8amXRtjE0AwwlBSj55TGDg0yLqm/YthICWaUncKoJmYabpu2YqXIuOVd
