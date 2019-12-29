@@ -2,11 +2,11 @@
 A Reactive Serial Port Library
  This serial port is configured to provide a stream of data Read and accept a stream of Write requests
 
-[![Build status](https://ci.appveyor.com/api/projects/status/mypr79isqnt5x8y8?svg=true)](https://ci.appveyor.com/project/ChrisPulman/serialportrx) [![Travis](https://img.shields.io/badge/SerialPortRx-V1.4.0-blue.svg)](https://www.nuget.org/packages/SerialPortRx/)
+[![Build status](https://ci.appveyor.com/api/projects/status/mypr79isqnt5x8y8?svg=true)](https://ci.appveyor.com/project/ChrisPulman/serialportrx) [![Travis](https://img.shields.io/badge/SerialPortRx-V1.4.1-blue.svg)](https://www.nuget.org/packages/SerialPortRx/)
 
 ## An Example of the usage of SerialPortRx
 ```csharp
-    using System;
+using System;
 using System.Linq;
 using System.Reactive.Disposables;
 using System.Reactive.Linq;
@@ -28,10 +28,10 @@ namespace CP.IO.Ports.Test
             var comdis = new CompositeDisposable();
             // Subscribe to com ports available
             SerialPortRx.PortNames().Do(x => {
-                if (comdis.Count == 0 && x.Contains(comPortName)) {
-                    comdis = new CompositeDisposable();
+                if (comdis?.Count == 0 && x.Contains(comPortName)) {
                     // Create a port
-                    using var port = new SerialPortRx(comPortName, 9600);
+                    var port = new SerialPortRx(comPortName, 9600);
+                    port.AddTo(comdis);
                     // Subscribe to Exceptions from port
                     port.ErrorReceived.Subscribe(Console.WriteLine).AddTo(comdis);
                     port.IsOpenObservable.Subscribe(x => Console.WriteLine($"Port {comPortName} is {(x ? "Open" : "Closed")}")).AddTo(comdis);
@@ -48,6 +48,7 @@ namespace CP.IO.Ports.Test
                 } else {
                     comdis.Dispose();
                     Console.WriteLine($"Port {comPortName} Disposed");
+                    comdis = new CompositeDisposable();
                 }
             }).ForEach().Subscribe(name => {
                 // Show available ports
@@ -60,4 +61,5 @@ namespace CP.IO.Ports.Test
         }
     }
 }
+
 ```

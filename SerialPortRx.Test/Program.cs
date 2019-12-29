@@ -20,10 +20,10 @@ namespace CP.IO.Ports.Test
             var comdis = new CompositeDisposable();
             // Subscribe to com ports available
             SerialPortRx.PortNames().Do(x => {
-                if (comdis.Count == 0 && x.Contains(comPortName)) {
-                    comdis = new CompositeDisposable();
+                if (comdis?.Count == 0 && x.Contains(comPortName)) {
                     // Create a port
-                    using var port = new SerialPortRx(comPortName, 9600);
+                    var port = new SerialPortRx(comPortName, 9600);
+                    port.AddTo(comdis);
                     // Subscribe to Exceptions from port
                     port.ErrorReceived.Subscribe(Console.WriteLine).AddTo(comdis);
                     port.IsOpenObservable.Subscribe(x => Console.WriteLine($"Port {comPortName} is {(x ? "Open" : "Closed")}")).AddTo(comdis);
@@ -40,6 +40,7 @@ namespace CP.IO.Ports.Test
                 } else {
                     comdis.Dispose();
                     Console.WriteLine($"Port {comPortName} Disposed");
+                    comdis = new CompositeDisposable();
                 }
             }).ForEach().Subscribe(name => {
                 // Show available ports

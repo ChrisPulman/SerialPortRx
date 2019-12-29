@@ -184,7 +184,7 @@
         /// Gets the is open observable.
         /// </summary>
         /// <value>The is open observable.</value>
-        public IObservable<bool> IsOpenObservable => isOpen;
+        public IObservable<bool> IsOpenObservable => isOpen.DistinctUntilChanged();
 
         /// <summary>
         /// Gets or sets the parity.
