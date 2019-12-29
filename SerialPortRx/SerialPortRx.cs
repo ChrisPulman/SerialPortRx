@@ -12,8 +12,6 @@
     using System.Text;
     using System.Threading;
     using System.Threading.Tasks;
-    using Reactive.Bindings;
-    using Reactive.Bindings.Extensions;
 
     /// <summary>
     /// Serial Port Rx
@@ -21,13 +19,14 @@
     /// <seealso cref="CP.IO.Ports.ISerialPortRx"/>
     public class SerialPortRx : ISerialPortRx
     {
+        internal readonly ISubject<bool> isOpen = new ReplaySubject<bool>(1);
         private readonly ISubject<char> dataReceived = new Subject<char>();
         private readonly ISubject<Exception> errors = new Subject<Exception>();
         private readonly ISubject<Tuple<byte[], int, int>> writeByte = new Subject<Tuple<byte[], int, int>>();
         private readonly ISubject<Tuple<char[], int, int>> writeChar = new Subject<Tuple<char[], int, int>>();
         private readonly ISubject<string> writeString = new Subject<string>();
         private readonly ISubject<string> writeStringLine = new Subject<string>();
-        private IDisposable disposablePort;
+        private CompositeDisposable disposablePort = new CompositeDisposable();
 
         /// <summary>
         /// Initializes a new instance of the <see cref="SerialPortRx"/> class.
@@ -118,29 +117,6 @@
         }
 
         /// <summary>
-        /// Gets the port names.
-        /// </summary>
-        /// <value>The port names.</value>
-        public static IObservable<string[]> PortNames (int pollInterval = 500) => Observable.Create<string[]>(obs => {
-            string[] compare = null;
-            return Observable.Interval(TimeSpan.FromMilliseconds(pollInterval)).Subscribe(_ => {
-                var compareNew = SerialPort.GetPortNames();
-                if (compareNew.Length == 0) {
-                    compareNew = new string[] { "NoPorts" };
-                }
-
-                if (compare == null) {
-                    compare = compareNew;
-                    obs.OnNext(compareNew);
-                }
-                if (string.Concat(compare) != string.Concat(compareNew)) {
-                    obs.OnNext(compareNew);
-                    compare = compareNew;
-                }
-            });
-        }).Retry().Publish().RefCount();
-
-        /// <summary>
         /// Gets or sets the baud rate.
         /// </summary>
         /// <value>The baud rate.</value>
@@ -202,13 +178,13 @@
         /// <value>The is open.</value>
         [Browsable(true)]
         [MonitoringDescription("IsOpen")]
-        public bool IsOpen => isOpen.Value;
+        public bool IsOpen { get; private set; }
 
         /// <summary>
         /// Gets the is open observable.
         /// </summary>
         /// <value>The is open observable.</value>
-        public IObservable<bool> IsOpenObservable => Observable.Create<bool>(obs => isOpen.Subscribe(obs));
+        public IObservable<bool> IsOpenObservable => isOpen;
 
         /// <summary>
         /// Gets or sets the parity.
@@ -264,58 +240,99 @@
             } else {
                 // Setup Com Port
                 var port = new SerialPort(PortName, BaudRate, Parity, DataBits, StopBits);
-                port.AddTo(dis);
+                dis.Add(port);
+                port.Close();
                 port.Handshake = Handshake;
                 port.ReadTimeout = ReadTimeout;
                 port.WriteTimeout = WriteTimeout;
                 port.Encoding = Encoding;
-                port.Open();
-                isOpen.Value = port.IsOpen;
+                try {
+                    port.Open();
+                } catch (Exception ex) {
+                    errors.OnNext(ex);
+                    obs.OnCompleted();
+                }
+                isOpen.OnNext(port.IsOpen);
+                IsOpen = port.IsOpen;
 
                 // Clear any existing buffers
-                port.DiscardInBuffer();
-                port.DiscardOutBuffer();
+                if (IsOpen) {
+                    port.DiscardInBuffer();
+                    port.DiscardOutBuffer();
+                }
                 Thread.Sleep(100);
 
                 // Subscribe to port errors
-                port.ErrorReceivedObserver().Subscribe(e => obs.OnError(new Exception(e.EventArgs.EventType.ToString()))).AddTo(dis);
+                dis.Add(port.ErrorReceivedObserver().Subscribe(e => obs.OnError(new Exception(e.EventArgs.EventType.ToString()))));
 
                 // Get the stream of Char from the serial port
                 var dataStream =
                     from dataRecieved in port.DataReceivedObserver()
                     from data in port.ReadExisting()
                     select data;
-                dataStream.Subscribe(dataReceived.OnNext, obs.OnError).AddTo(dis);
+                dis.Add(dataStream.Subscribe(dataReceived.OnNext, obs.OnError));
 
                 // setup Write streams
-                writeString.Subscribe(x => {
+                dis.Add(writeString.Subscribe(x => {
                     try { port?.Write(x); } catch (Exception ex) {
                         obs.OnError(ex);
                     }
-                }, obs.OnError).AddTo(dis);
-                writeStringLine.Subscribe(x => {
+                }, obs.OnError));
+                dis.Add(writeStringLine.Subscribe(x => {
                     try { port?.WriteLine(x); } catch (Exception ex) {
                         obs.OnError(ex);
                     }
-                }, obs.OnError).AddTo(dis);
-                writeByte.Subscribe(x => {
+                }, obs.OnError));
+                dis.Add(writeByte.Subscribe(x => {
                     try { port?.Write(x.Item1, x.Item2, x.Item3); } catch (Exception ex) {
                         obs.OnError(ex);
                     }
-                }, obs.OnError).AddTo(dis);
-                writeChar.Subscribe(x => {
+                }, obs.OnError));
+                dis.Add(writeChar.Subscribe(x => {
                     try { port?.Write(x.Item1, x.Item2, x.Item3); } catch (Exception ex) {
                         obs.OnError(ex);
                     }
-                }, obs.OnError).AddTo(dis);
+                }, obs.OnError));
             }
             return Disposable.Create(() => {
-                isOpen.Value = false;
+                IsOpen = false;
+                isOpen.OnNext(false);
                 dis.Dispose();
             });
         }).OnErrorRetry((Exception ex) => errors.OnNext(ex)).Publish().RefCount();
 
-        internal IReactiveProperty<bool> isOpen { get; } = new ReactiveProperty<bool>();
+        /// <summary>
+        /// Gets the port names.
+        /// </summary>
+        /// <param name="pollInterval">The poll interval.</param>
+        /// <param name="pollLimit">The poll limit, once number is reached observable will complete.</param>
+        /// <returns></returns>
+        /// <value>The port names.</value>
+        public static IObservable<string[]> PortNames(int pollInterval = 500, int pollLimit = 0) => Observable.Create<string[]>(obs => {
+            string[] compare = null;
+            var numberOfPolls = 0;
+            return Observable.Interval(TimeSpan.FromMilliseconds(pollInterval)).Subscribe(_ => {
+                var compareNew = SerialPort.GetPortNames();
+                if (compareNew.Length == 0) {
+                    compareNew = new string[] { "NoPorts" };
+                }
+
+                if (compare == null) {
+                    compare = compareNew;
+                    obs.OnNext(compareNew);
+                }
+                if (string.Concat(compare) != string.Concat(compareNew)) {
+                    obs.OnNext(compareNew);
+                    compare = compareNew;
+                }
+                if (numberOfPolls > pollLimit) {
+                    obs.OnCompleted();
+                }
+                if (pollLimit > 0 && numberOfPolls < pollLimit) {
+                    numberOfPolls++;
+                }
+            });
+        }).Retry().Publish().RefCount();
 
         /// <summary>
         /// Closes this instance.
@@ -337,9 +354,9 @@
         /// <summary>
         /// Opens this instance.
         /// </summary>
-        public void Open()
+        public Task Open()
         {
-            Task.Run(() => disposablePort = Connect.Subscribe());
+            return disposablePort?.Count == 0 ? Task.Run(() => Connect.Subscribe().AddTo(disposablePort)) : Task.CompletedTask;
         }
 
         /// <summary>

@@ -2,7 +2,7 @@
 {
     using System;
     using System.IO.Ports;
-    using Reactive.Bindings;
+    using System.Threading.Tasks;
 
     /// <summary>
     /// Serial Port Rx interface
@@ -95,7 +95,7 @@
         /// <summary>
         /// Opens this instance.
         /// </summary>
-        void Open();
+        Task Open();
 
         /// <summary>
         /// Writes the specified byte array.
