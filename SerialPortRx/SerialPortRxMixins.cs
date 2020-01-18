@@ -46,7 +46,7 @@ namespace CP.IO.Ports
         /// <returns>A string made up from the char values between the start and end chars</returns>
         public static IObservable<string> BufferUntil(this IObservable<char> @this, IObservable<char> startsWith, IObservable<char> endsWith, int timeOut) => Observable.Create<string>(o => {
             var dis = new CompositeDisposable();
-            var sb = new StringBuilder();
+            var str = "";
 
             var startFound = false;
             var elapsedTime = 0;
@@ -61,11 +61,11 @@ namespace CP.IO.Ports
                 elapsedTime = 0;
                 if (startFound || s == startsWithL) {
                     startFound = true;
-                    sb.Append(s);
+                    str = str + s;
                     if (s == endsWithL) {
-                        o.OnNext(sb.ToString());
+                        o.OnNext(str);
                         startFound = false;
-                        sb.Clear();
+                        str = "";
                     }
                 }
             }).AddTo(dis);
@@ -73,7 +73,7 @@ namespace CP.IO.Ports
                 elapsedTime++;
                 if (elapsedTime > timeOut) {
                     startFound = false;
-                    sb.Clear();
+                    str = "";
                     elapsedTime = 0;
                 }
             }).AddTo(dis);
@@ -93,7 +93,7 @@ namespace CP.IO.Ports
         /// <returns>A string made up from the char values between the start and end chars</returns>
         public static IObservable<string> BufferUntil(this IObservable<char> @this, IObservable<char> startsWith, IObservable<char> endsWith, IObservable<string> defaultValue, int timeOut) => Observable.Create<string>(o => {
             var dis = new CompositeDisposable();
-            var sb = new StringBuilder();
+            string str = "";
 
             var startFound = false;
             var elapsedTime = 0;
@@ -110,11 +110,11 @@ namespace CP.IO.Ports
                 elapsedTime = 0;
                 if (startFound || s == startsWithL) {
                     startFound = true;
-                    sb.Append(s);
+                    str = str + s;
                     if (s == endsWithL) {
-                        o.OnNext(sb.ToString());
+                        o.OnNext(str);
                         startFound = false;
-                        sb.Clear();
+                        str = "";
                     }
                 }
             }).AddTo(dis);
@@ -124,7 +124,7 @@ namespace CP.IO.Ports
                 if (elapsedTime > timeOut) {
                     o.OnNext(defaultValueL);
                     startFound = false;
-                    sb.Clear();
+                    str = "";
                     elapsedTime = 0;
                 }
             }).AddTo(dis);
