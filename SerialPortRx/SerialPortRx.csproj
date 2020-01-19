@@ -1,7 +1,7 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <TargetFrameworks>net461</TargetFrameworks>
-    <Version>1.4.1</Version>
+    <Version>1.4.2</Version>
     <Description>An Observable Com port extension of System.IO.Ports.SerialPort</Description>
     <Copyright>Copyright © https://github.com/ChrisPulman $([System.DateTime]::Now.ToString(yyyy))</Copyright>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
