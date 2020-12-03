@@ -13,7 +13,7 @@
     <Authors>Chris Pulman</Authors>
   </PropertyGroup>
   <ItemGroup>
-    <PackageReference Include="System.Reactive" Version="4.4.1" />
+    <PackageReference Include="System.Reactive" Version="5.0.0" />
     <PackageReference Include="System.IO.Ports" Version="5.0.0" />
   </ItemGroup>
 
