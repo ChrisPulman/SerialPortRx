@@ -1,6 +1,7 @@
 <Project DefaultTargets="Build"
   xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <PropertyGroup>
+    <Version>1.4.4</Version>
     <Authors>Chris Pulman</Authors>
     <TargetFrameworks>net48;netcoreapp3.1;net5.0;</TargetFrameworks>
     <Description>An Observable Com port extension of System.IO.Ports.SerialPort</Description>
@@ -28,8 +29,5 @@
     <PackageReference Include="Microsoft.CodeAnalysis.NetAnalyzers" Version="5.*" PrivateAssets="all" />
     <PackageReference Include="Roslynator.Analyzers" Version="3.*" PrivateAssets="All" />
     <AdditionalFiles Include="$(MSBuildThisFileDirectory)stylecop.json" Link="stylecop.json" />
-  </ItemGroup>
-  <ItemGroup>
-    <PackageReference Include="Nerdbank.GitVersioning" Version="3.*" PrivateAssets="all" />
   </ItemGroup>
 </Project>
