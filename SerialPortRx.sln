@@ -7,9 +7,11 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "SerialPortRx", "SerialPortR
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "ConfigFiles", "ConfigFiles", "{D4EE9FBC-EA31-4BF1-8F9D-A8D1E0B9500C}"
 	ProjectSection(SolutionItems) = preProject
+		.editorconfig = .editorconfig
 		appveyor.yml = appveyor.yml
 		Directory.Build.props = Directory.Build.props
 		README.md = README.md
+		stylecop.json = stylecop.json
 		Version.json = Version.json
 	EndProjectSection
 EndProject

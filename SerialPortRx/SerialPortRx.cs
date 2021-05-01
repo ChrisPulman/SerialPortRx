@@ -1,20 +1,25 @@
-﻿namespace CP.IO.Ports
-{
-    using System;
-    using System.ComponentModel;
-    using System.Diagnostics;
-    using System.IO.Ports;
-    using System.Linq;
-    using System.Reactive;
-    using System.Reactive.Disposables;
-    using System.Reactive.Linq;
-    using System.Reactive.Subjects;
-    using System.Text;
-    using System.Threading;
-    using System.Threading.Tasks;
+﻿// <copyright file="SerialPortRx.cs" company="Chris Pulman">
+// Copyright (c) Chris Pulman. All rights reserved.
+// Licensed under the MIT license. See LICENSE file in the project root for full license information.
+// </copyright>
 
+using System;
+using System.ComponentModel;
+using System.Diagnostics;
+using System.IO.Ports;
+using System.Linq;
+using System.Reactive;
+using System.Reactive.Disposables;
+using System.Reactive.Linq;
+using System.Reactive.Subjects;
+using System.Text;
+using System.Threading;
+using System.Threading.Tasks;
+
+namespace CP.IO.Ports
+{
     /// <summary>
-    /// Serial Port Rx
+    /// Serial Port Rx.
     /// </summary>
     /// <seealso cref="CP.IO.Ports.ISerialPortRx"/>
     public class SerialPortRx : ISerialPortRx
@@ -104,10 +109,13 @@
         }
 
         /// <summary>
-        /// Initializes a new instance of the <see cref="SerialPortRx"/> class.
+        /// Initializes a new instance of the <see cref="SerialPortRx" /> class.
         /// </summary>
         /// <param name="port">The port.</param>
-        public SerialPortRx(string port) { PortName = port; }
+        public SerialPortRx(string port)
+        {
+            PortName = port;
+        }
 
         /// <summary>
         /// Initializes a new instance of the <see cref="SerialPortRx"/> class.
@@ -173,7 +181,7 @@
         public bool IsDisposed { get; private set; } = false;
 
         /// <summary>
-        /// Gets the is open.
+        /// Gets a value indicating whether gets the is open.
         /// </summary>
         /// <value>The is open.</value>
         [Browsable(true)]
@@ -231,13 +239,17 @@
         [MonitoringDescription("WriteTimeout")]
         public int WriteTimeout { get; set; } = -1;
 
-        private IObservable<Unit> Connect => Observable.Create<Unit>(obs => {
+        private IObservable<Unit> Connect => Observable.Create<Unit>(obs =>
+        {
             var dis = new CompositeDisposable();
 
             // Check that the port exists
-            if (!SerialPort.GetPortNames().Any(name => name.Equals(PortName))) {
+            if (!SerialPort.GetPortNames().Any(name => name.Equals(PortName)))
+            {
                 obs.OnError(new Exception($"Serial Port {PortName} does not exist"));
-            } else {
+            }
+            else
+            {
                 // Setup Com Port
                 var port = new SerialPort(PortName, BaudRate, Parity, DataBits, StopBits);
                 dis.Add(port);
@@ -246,20 +258,26 @@
                 port.ReadTimeout = ReadTimeout;
                 port.WriteTimeout = WriteTimeout;
                 port.Encoding = Encoding;
-                try {
+                try
+                {
                     port.Open();
-                } catch (Exception ex) {
+                }
+                catch (Exception ex)
+                {
                     errors.OnNext(ex);
                     obs.OnCompleted();
                 }
+
                 isOpen.OnNext(port.IsOpen);
                 IsOpen = port.IsOpen;
 
                 // Clear any existing buffers
-                if (IsOpen) {
+                if (IsOpen)
+                {
                     port.DiscardInBuffer();
                     port.DiscardOutBuffer();
                 }
+
                 Thread.Sleep(100);
 
                 // Subscribe to port errors
@@ -273,28 +291,58 @@
                 dis.Add(dataStream.Subscribe(dataReceived.OnNext, obs.OnError));
 
                 // setup Write streams
-                dis.Add(writeString.Subscribe(x => {
-                    try { port?.Write(x); } catch (Exception ex) {
+                dis.Add(writeString.Subscribe(
+                    x =>
+                {
+                    try
+                    {
+                        port?.Write(x);
+                    }
+                    catch (Exception ex)
+                    {
                         obs.OnError(ex);
                     }
                 }, obs.OnError));
-                dis.Add(writeStringLine.Subscribe(x => {
-                    try { port?.WriteLine(x); } catch (Exception ex) {
+                dis.Add(writeStringLine.Subscribe(
+                    x =>
+                {
+                    try
+                    {
+                        port?.WriteLine(x);
+                    }
+                    catch (Exception ex)
+                    {
                         obs.OnError(ex);
                     }
                 }, obs.OnError));
-                dis.Add(writeByte.Subscribe(x => {
-                    try { port?.Write(x.Item1, x.Item2, x.Item3); } catch (Exception ex) {
+                dis.Add(writeByte.Subscribe(
+                    x =>
+                {
+                    try
+                    {
+                        port?.Write(x.Item1, x.Item2, x.Item3);
+                    }
+                    catch (Exception ex)
+                    {
                         obs.OnError(ex);
                     }
                 }, obs.OnError));
-                dis.Add(writeChar.Subscribe(x => {
-                    try { port?.Write(x.Item1, x.Item2, x.Item3); } catch (Exception ex) {
+                dis.Add(writeChar.Subscribe(
+                    x =>
+                {
+                    try
+                    {
+                        port?.Write(x.Item1, x.Item2, x.Item3);
+                    }
+                    catch (Exception ex)
+                    {
                         obs.OnError(ex);
                     }
                 }, obs.OnError));
             }
-            return Disposable.Create(() => {
+
+            return Disposable.Create(() =>
+            {
                 IsOpen = false;
                 isOpen.OnNext(false);
                 dis.Dispose();
@@ -306,29 +354,39 @@
         /// </summary>
         /// <param name="pollInterval">The poll interval.</param>
         /// <param name="pollLimit">The poll limit, once number is reached observable will complete.</param>
-        /// <returns></returns>
+        /// <returns>Observable string.</returns>
         /// <value>The port names.</value>
-        public static IObservable<string[]> PortNames(int pollInterval = 500, int pollLimit = 0) => Observable.Create<string[]>(obs => {
+        public static IObservable<string[]> PortNames(int pollInterval = 500, int pollLimit = 0) => Observable.Create<string[]>(obs =>
+        {
             string[] compare = null;
             var numberOfPolls = 0;
-            return Observable.Interval(TimeSpan.FromMilliseconds(pollInterval)).Subscribe(_ => {
+            return Observable.Interval(TimeSpan.FromMilliseconds(pollInterval)).Subscribe(_ =>
+            {
                 var compareNew = SerialPort.GetPortNames();
-                if (compareNew.Length == 0) {
+                if (compareNew.Length == 0)
+                {
                     compareNew = new string[] { "NoPorts" };
                 }
 
-                if (compare == null) {
+                if (compare == null)
+                {
                     compare = compareNew;
                     obs.OnNext(compareNew);
                 }
-                if (string.Concat(compare) != string.Concat(compareNew)) {
+
+                if (string.Concat(compare) != string.Concat(compareNew))
+                {
                     obs.OnNext(compareNew);
                     compare = compareNew;
                 }
-                if (numberOfPolls > pollLimit) {
+
+                if (numberOfPolls > pollLimit)
+                {
                     obs.OnCompleted();
                 }
-                if (pollLimit > 0 && numberOfPolls < pollLimit) {
+
+                if (pollLimit > 0 && numberOfPolls < pollLimit)
+                {
                     numberOfPolls++;
                 }
             });
@@ -349,11 +407,15 @@
         public void Dispose()
         {
             Dispose(true);
+            GC.SuppressFinalize(this);
         }
 
         /// <summary>
         /// Opens this instance.
         /// </summary>
+        /// <returns>
+        /// A Task.
+        /// </returns>
         public Task Open()
         {
             return disposablePort?.Count == 0 ? Task.Run(() => Connect.Subscribe().AddTo(disposablePort)) : Task.CompletedTask;
@@ -426,8 +488,10 @@
         /// </param>
         protected virtual void Dispose(bool disposing)
         {
-            if (!IsDisposed) {
-                if (disposing) {
+            if (!IsDisposed)
+            {
+                if (disposing)
+                {
                     disposablePort?.Dispose();
                 }
 

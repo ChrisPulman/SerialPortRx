@@ -1,11 +1,16 @@
-﻿namespace CP.IO.Ports
-{
-    using System;
-    using System.IO.Ports;
-    using System.Threading.Tasks;
+﻿// <copyright file="ISerialPortRx.cs" company="Chris Pulman">
+// Copyright (c) Chris Pulman. All rights reserved.
+// Licensed under the MIT license. See LICENSE file in the project root for full license information.
+// </copyright>
 
+using System;
+using System.IO.Ports;
+using System.Threading.Tasks;
+
+namespace CP.IO.Ports
+{
     /// <summary>
-    /// Serial Port Rx interface
+    /// Serial Port Rx interface.
     /// </summary>
     public interface ISerialPortRx : IDisposable
     {
@@ -46,9 +51,11 @@
         bool IsDisposed { get; }
 
         /// <summary>
-        /// Gets the is open.
+        /// Gets a value indicating whether gets the is open.
         /// </summary>
-        /// <value>The is open.</value>
+        /// <value>
+        /// The is open.
+        /// </value>
         bool IsOpen { get; }
 
         /// <summary>
@@ -95,6 +102,7 @@
         /// <summary>
         /// Opens this instance.
         /// </summary>
+        /// <returns>A Task.</returns>
         Task Open();
 
         /// <summary>
