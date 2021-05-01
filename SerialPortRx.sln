@@ -3,15 +3,17 @@ Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 16
 VisualStudioVersion = 16.0.29613.14
 MinimumVisualStudioVersion = 10.0.40219.1
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SerialPortRx", "SerialPortRx\SerialPortRx.csproj", "{CDA3585B-D3D6-4BE4-9A6B-582AB5DE0B8F}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "SerialPortRx", "SerialPortRx\SerialPortRx.csproj", "{CDA3585B-D3D6-4BE4-9A6B-582AB5DE0B8F}"
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "ConfigFiles", "ConfigFiles", "{D4EE9FBC-EA31-4BF1-8F9D-A8D1E0B9500C}"
 	ProjectSection(SolutionItems) = preProject
 		appveyor.yml = appveyor.yml
+		Directory.Build.props = Directory.Build.props
 		README.md = README.md
+		Version.json = Version.json
 	EndProjectSection
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SerialPortRx.Test", "SerialPortRx.Test\SerialPortRx.Test.csproj", "{6365DAE3-9EB7-4054-94E9-A3100C6637ED}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "SerialPortRx.Test", "SerialPortRx.Test\SerialPortRx.Test.csproj", "{6365DAE3-9EB7-4054-94E9-A3100C6637ED}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution

@@ -61,7 +61,7 @@ namespace CP.IO.Ports
                 elapsedTime = 0;
                 if (startFound || s == startsWithL) {
                     startFound = true;
-                    str = str + s;
+                    str += s;
                     if (s == endsWithL) {
                         o.OnNext(str);
                         startFound = false;
@@ -93,7 +93,7 @@ namespace CP.IO.Ports
         /// <returns>A string made up from the char values between the start and end chars</returns>
         public static IObservable<string> BufferUntil(this IObservable<char> @this, IObservable<char> startsWith, IObservable<char> endsWith, IObservable<string> defaultValue, int timeOut) => Observable.Create<string>(o => {
             var dis = new CompositeDisposable();
-            string str = "";
+            var str = "";
 
             var startFound = false;
             var elapsedTime = 0;
@@ -110,7 +110,7 @@ namespace CP.IO.Ports
                 elapsedTime = 0;
                 if (startFound || s == startsWithL) {
                     startFound = true;
-                    str = str + s;
+                    str += s;
                     if (s == endsWithL) {
                         o.OnNext(str);
                         startFound = false;
@@ -266,7 +266,7 @@ where TException : Exception => source.OnErrorRetry(onError, retryCount, delay, 
         /// <returns></returns>
         public static IObservable<bool> WhileIsOpen(this SerialPortRx @this, TimeSpan timespan) =>
             Observable.Defer(() => Observable.Create<bool>(obs => {
-                var isOpen = Observable.Interval(timespan).CombineLatest(@this.isOpen, (a, b) => b).Where(x => x);
+                var isOpen = Observable.Interval(timespan).CombineLatest(@this.isOpen, (_, b) => b).Where(x => x);
                 return isOpen.Subscribe(obs);
             }));
     }

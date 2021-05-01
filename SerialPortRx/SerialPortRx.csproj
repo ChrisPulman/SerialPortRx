@@ -1,18 +1,7 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
-  <PropertyGroup>
-    <TargetFrameworks>net461;netcoreapp3.1;</TargetFrameworks>
-    <Version>1.4.3</Version>
-    <Description>An Observable Com port extension of System.IO.Ports.SerialPort</Description>
-    <Copyright>Copyright © https://github.com/ChrisPulman $([System.DateTime]::Now.ToString(yyyy))</Copyright>
-    <GenerateDocumentationFile>true</GenerateDocumentationFile>
-    <LangVersion>latest</LangVersion>
-    <Configuration>$(TargetFramework)</Configuration>
-    <Company>ChrisPulman</Company>
-    <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
-    <PackageReleaseNotes>Removed Dependency on RxProperty</PackageReleaseNotes>
-    <Authors>Chris Pulman</Authors>
-  </PropertyGroup>
+
   <ItemGroup>
+    <Compile Update="**\*.cs" DependentUpon="I%(Filename).cs" />
     <PackageReference Include="System.Reactive" Version="5.0.0" />
     <PackageReference Include="System.IO.Ports" Version="5.0.1" />
   </ItemGroup>

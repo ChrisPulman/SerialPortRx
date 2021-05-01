@@ -2,14 +2,8 @@
 
   <PropertyGroup>
     <OutputType>Exe</OutputType>
-    <TargetFramework>net461</TargetFramework>
     <RootNamespace>CP.IO.Ports</RootNamespace>
-    <LangVersion>latest</LangVersion>
   </PropertyGroup>
-
-  <ItemGroup>
-    <PackageReference Include="System.Reactive" Version="5.0.0" />
-  </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\SerialPortRx\SerialPortRx.csproj" />

@@ -9,9 +9,9 @@ namespace CP.IO.Ports.Test
     {
         private static void Main(string[] args)
         {
-            var comPortName = "COM1";
+            const string comPortName = "COM1";
             // configure the data to write, this can be a string, a byte array, or a char array
-            var dataToWrite = "DataToWrite";
+            const string dataToWrite = "DataToWrite";
             var dis = new CompositeDisposable();
             // Setup the start of message and end of message
             var startChar = (0x21).AsObservable();
@@ -32,7 +32,7 @@ namespace CP.IO.Ports.Test
                         Console.WriteLine(data);
                     }).AddTo(comdis);
                     // Subscribe to the Is Open @500ms intervals and write to com port
-                    port.WhileIsOpen(TimeSpan.FromMilliseconds(500)).Subscribe(x => {
+                    port.WhileIsOpen(TimeSpan.FromMilliseconds(500)).Subscribe(_ => {
                         port.Write(dataToWrite);
                     }).AddTo(comdis);
                     // Open the Com Port after subscriptions created
