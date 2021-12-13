@@ -1,9 +1,9 @@
 <Project DefaultTargets="Build"
   xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <PropertyGroup>
-    <Version>1.4.4</Version>
+    <Version>2.1.1</Version>
     <Authors>Chris Pulman</Authors>
-    <TargetFrameworks>net48;netcoreapp3.1;net5.0;</TargetFrameworks>
+    <TargetFrameworks>net461;netstandard2.0;net6.0;</TargetFrameworks>
     <Description>An Observable Com port extension of System.IO.Ports.SerialPort</Description>
     <Copyright>Copyright © https://github.com/ChrisPulman $([System.DateTime]::Now.ToString(yyyy))</Copyright>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
@@ -12,7 +12,9 @@
     <Company>ChrisPulman</Company>
     <NoWarn>CS1591</NoWarn>
     <Configurations>Debug;Release;PreRelease</Configurations>
-    <PackageReleaseNotes>Added compatability with Net 5</PackageReleaseNotes>
+    <PackageReleaseNotes>Added compatability with Net 6 and netstandard2.0, removed Net 5 and netcore3.1</PackageReleaseNotes>
+    <EnableNETAnalyzers>True</EnableNETAnalyzers>
+    <AnalysisLevel>latest</AnalysisLevel>
   </PropertyGroup>
 
   <PropertyGroup Condition="'$(Configuration)'=='Release'">
@@ -25,9 +27,8 @@
 
   <ItemGroup Condition="'$(Configuration)'=='Debug'">
     <!--<Compile Update="**\*.cs" DependentUpon="I%(Filename).cs" />-->
-    <PackageReference Include="stylecop.analyzers" Version="1.*" PrivateAssets="all" />
-    <PackageReference Include="Microsoft.CodeAnalysis.NetAnalyzers" Version="6.*" PrivateAssets="all" />
-    <PackageReference Include="Roslynator.Analyzers" Version="3.*" PrivateAssets="All" />
+    <PackageReference Include="stylecop.analyzers" Version="1.2.0-beta.376" PrivateAssets="all" />
+    <PackageReference Include="Roslynator.Analyzers" Version="3.3.0" PrivateAssets="All" />
     <AdditionalFiles Include="$(MSBuildThisFileDirectory)stylecop.json" Link="stylecop.json" />
   </ItemGroup>
 </Project>
