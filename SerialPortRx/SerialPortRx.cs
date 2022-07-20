@@ -24,14 +24,14 @@ namespace CP.IO.Ports;
 /// <seealso cref="CP.IO.Ports.ISerialPortRx"/>
 public class SerialPortRx : ISerialPortRx
 {
-    internal readonly ISubject<bool> isOpen = new ReplaySubject<bool>(1);
-    private readonly ISubject<char> dataReceived = new Subject<char>();
-    private readonly ISubject<Exception> errors = new Subject<Exception>();
-    private readonly ISubject<Tuple<byte[], int, int>> writeByte = new Subject<Tuple<byte[], int, int>>();
-    private readonly ISubject<Tuple<char[], int, int>> writeChar = new Subject<Tuple<char[], int, int>>();
-    private readonly ISubject<string> writeString = new Subject<string>();
-    private readonly ISubject<string> writeStringLine = new Subject<string>();
-    private CompositeDisposable disposablePort = new();
+    private readonly ISubject<bool> _isOpenValue = new ReplaySubject<bool>(1);
+    private readonly ISubject<char> _dataReceived = new Subject<char>();
+    private readonly ISubject<Exception> _errors = new Subject<Exception>();
+    private readonly ISubject<Tuple<byte[], int, int>> _writeByte = new Subject<Tuple<byte[], int, int>>();
+    private readonly ISubject<Tuple<char[], int, int>> _writeChar = new Subject<Tuple<char[], int, int>>();
+    private readonly ISubject<string> _writeString = new Subject<string>();
+    private readonly ISubject<string> _writeStringLine = new Subject<string>();
+    private readonly CompositeDisposable _disposablePort = new();
 
     /// <summary>
     /// Initializes a new instance of the <see cref="SerialPortRx"/> class.
@@ -146,7 +146,7 @@ public class SerialPortRx : ISerialPortRx
     /// Gets the data received.
     /// </summary>
     /// <value>The data received.</value>
-    public IObservable<char> DataReceived => dataReceived.Retry().Publish().RefCount();
+    public IObservable<char> DataReceived => _dataReceived.Retry().Publish().RefCount();
 
     /// <summary>
     /// Gets or sets the encoding.
@@ -161,7 +161,7 @@ public class SerialPortRx : ISerialPortRx
     /// Gets the error received.
     /// </summary>
     /// <value>The error received.</value>
-    public IObservable<Exception> ErrorReceived => errors.Distinct(ex => ex.Message).Retry().Publish().RefCount();
+    public IObservable<Exception> ErrorReceived => _errors.Distinct(ex => ex.Message).Retry().Publish().RefCount();
 
     /// <summary>
     /// Gets or sets the handshake.
@@ -178,7 +178,7 @@ public class SerialPortRx : ISerialPortRx
     /// <value><c>true</c> if this instance is disposed; otherwise, <c>false</c>.</value>
     [Browsable(true)]
     [MonitoringDescription("IsDisposed")]
-    public bool IsDisposed { get; private set; } = false;
+    public bool IsDisposed { get; private set; }
 
     /// <summary>
     /// Gets a value indicating whether gets the is open.
@@ -192,7 +192,7 @@ public class SerialPortRx : ISerialPortRx
     /// Gets the is open observable.
     /// </summary>
     /// <value>The is open observable.</value>
-    public IObservable<bool> IsOpenObservable => isOpen.DistinctUntilChanged();
+    public IObservable<bool> IsOpenObservable => _isOpenValue.DistinctUntilChanged();
 
     /// <summary>
     /// Gets or sets the parity.
@@ -239,13 +239,17 @@ public class SerialPortRx : ISerialPortRx
     [MonitoringDescription("WriteTimeout")]
     public int WriteTimeout { get; set; } = -1;
 
-    private IObservable<Unit> Connect => Observable.Create<Unit>(obs => {
+    private IObservable<Unit> Connect => Observable.Create<Unit>(obs =>
+    {
         var dis = new CompositeDisposable();
 
         // Check that the port exists
-        if (!SerialPort.GetPortNames().Any(name => name.Equals(PortName))) {
+        if (!SerialPort.GetPortNames().Any(name => name.Equals(PortName)))
+        {
             obs.OnError(new Exception($"Serial Port {PortName} does not exist"));
-        } else {
+        }
+        else
+        {
             // Setup Com Port
             var port = new SerialPort(PortName, BaudRate, Parity, DataBits, StopBits);
             dis.Add(port);
@@ -254,18 +258,22 @@ public class SerialPortRx : ISerialPortRx
             port.ReadTimeout = ReadTimeout;
             port.WriteTimeout = WriteTimeout;
             port.Encoding = Encoding;
-            try {
+            try
+            {
                 port.Open();
-            } catch (Exception ex) {
-                errors.OnNext(ex);
+            }
+            catch (Exception ex)
+            {
+                _errors.OnNext(ex);
                 obs.OnCompleted();
             }
 
-            isOpen.OnNext(port.IsOpen);
+            _isOpenValue.OnNext(port.IsOpen);
             IsOpen = port.IsOpen;
 
             // Clear any existing buffers
-            if (IsOpen) {
+            if (IsOpen)
+            {
                 port.DiscardInBuffer();
                 port.DiscardOutBuffer();
             }
@@ -280,49 +288,70 @@ public class SerialPortRx : ISerialPortRx
                 from dataRecieved in port.DataReceivedObserver()
                 from data in port.ReadExisting()
                 select data;
-            dis.Add(dataStream.Subscribe(dataReceived.OnNext, obs.OnError));
+            dis.Add(dataStream.Subscribe(_dataReceived.OnNext, obs.OnError));
 
             // setup Write streams
-            dis.Add(writeString.Subscribe(
-                x => {
-                    try {
+            dis.Add(_writeString.Subscribe(
+                x =>
+                {
+                    try
+                    {
                         port?.Write(x);
-                    } catch (Exception ex) {
+                    }
+                    catch (Exception ex)
+                    {
                         obs.OnError(ex);
                     }
-                }, obs.OnError));
-            dis.Add(writeStringLine.Subscribe(
-                x => {
-                    try {
+                },
+                obs.OnError));
+            dis.Add(_writeStringLine.Subscribe(
+                x =>
+                {
+                    try
+                    {
                         port?.WriteLine(x);
-                    } catch (Exception ex) {
+                    }
+                    catch (Exception ex)
+                    {
                         obs.OnError(ex);
                     }
-                }, obs.OnError));
-            dis.Add(writeByte.Subscribe(
-                x => {
-                    try {
+                },
+                obs.OnError));
+            dis.Add(_writeByte.Subscribe(
+                x =>
+                {
+                    try
+                    {
                         port?.Write(x.Item1, x.Item2, x.Item3);
-                    } catch (Exception ex) {
+                    }
+                    catch (Exception ex)
+                    {
                         obs.OnError(ex);
                     }
-                }, obs.OnError));
-            dis.Add(writeChar.Subscribe(
-                x => {
-                    try {
+                },
+                obs.OnError));
+            dis.Add(_writeChar.Subscribe(
+                x =>
+                {
+                    try
+                    {
                         port?.Write(x.Item1, x.Item2, x.Item3);
-                    } catch (Exception ex) {
+                    }
+                    catch (Exception ex)
+                    {
                         obs.OnError(ex);
                     }
-                }, obs.OnError));
+                },
+                obs.OnError));
         }
 
-        return Disposable.Create(() => {
+        return Disposable.Create(() =>
+        {
             IsOpen = false;
-            isOpen.OnNext(false);
+            _isOpenValue.OnNext(false);
             dis.Dispose();
         });
-    }).OnErrorRetry((Exception ex) => errors.OnNext(ex)).Publish().RefCount();
+    }).OnErrorRetry((Exception ex) => _errors.OnNext(ex)).Publish().RefCount();
 
     /// <summary>
     /// Gets the port names.
@@ -331,30 +360,37 @@ public class SerialPortRx : ISerialPortRx
     /// <param name="pollLimit">The poll limit, once number is reached observable will complete.</param>
     /// <returns>Observable string.</returns>
     /// <value>The port names.</value>
-    public static IObservable<string[]> PortNames(int pollInterval = 500, int pollLimit = 0) => Observable.Create<string[]>(obs => {
-        string[] compare = null;
+    public static IObservable<string[]> PortNames(int pollInterval = 500, int pollLimit = 0) => Observable.Create<string[]>(obs =>
+    {
+        string[]? compare = null;
         var numberOfPolls = 0;
-        return Observable.Interval(TimeSpan.FromMilliseconds(pollInterval)).Subscribe(_ => {
+        return Observable.Interval(TimeSpan.FromMilliseconds(pollInterval)).Subscribe(_ =>
+        {
             var compareNew = SerialPort.GetPortNames();
-            if (compareNew.Length == 0) {
+            if (compareNew.Length == 0)
+            {
                 compareNew = new string[] { "NoPorts" };
             }
 
-            if (compare == null) {
+            if (compare == null)
+            {
                 compare = compareNew;
                 obs.OnNext(compareNew);
             }
 
-            if (string.Concat(compare) != string.Concat(compareNew)) {
+            if (string.Concat(compare) != string.Concat(compareNew))
+            {
                 obs.OnNext(compareNew);
                 compare = compareNew;
             }
 
-            if (numberOfPolls > pollLimit) {
+            if (numberOfPolls > pollLimit)
+            {
                 obs.OnCompleted();
             }
 
-            if (pollLimit > 0 && numberOfPolls < pollLimit) {
+            if (pollLimit > 0 && numberOfPolls < pollLimit)
+            {
                 numberOfPolls++;
             }
         });
@@ -365,7 +401,7 @@ public class SerialPortRx : ISerialPortRx
     /// </summary>
     public void Close()
     {
-        disposablePort?.Dispose();
+        _disposablePort?.Dispose();
     }
 
     /// <summary>
@@ -386,7 +422,7 @@ public class SerialPortRx : ISerialPortRx
     /// </returns>
     public Task Open()
     {
-        return disposablePort?.Count == 0 ? Task.Run(() => Connect.Subscribe().AddTo(disposablePort)) : Task.CompletedTask;
+        return _disposablePort?.Count == 0 ? Task.Run(() => Connect.Subscribe().AddTo(_disposablePort)) : Task.CompletedTask;
     }
 
     /// <summary>
@@ -395,7 +431,7 @@ public class SerialPortRx : ISerialPortRx
     /// <param name="text">The text.</param>
     public void Write(string text)
     {
-        writeString?.OnNext(text);
+        _writeString?.OnNext(text);
     }
 
     /// <summary>
@@ -406,7 +442,7 @@ public class SerialPortRx : ISerialPortRx
     /// <param name="count">The count.</param>
     public void Write(byte[] byteArray, int offset, int count)
     {
-        writeByte?.OnNext(new Tuple<byte[], int, int>(byteArray, offset, count));
+        _writeByte?.OnNext(new Tuple<byte[], int, int>(byteArray, offset, count));
     }
 
     /// <summary>
@@ -415,7 +451,12 @@ public class SerialPortRx : ISerialPortRx
     /// <param name="byteArray">The byte array.</param>
     public void Write(byte[] byteArray)
     {
-        writeByte?.OnNext(new Tuple<byte[], int, int>(byteArray, 0, byteArray.Length));
+        if (byteArray == null)
+        {
+            throw new ArgumentNullException(nameof(byteArray));
+        }
+
+        _writeByte?.OnNext(new Tuple<byte[], int, int>(byteArray, 0, byteArray.Length));
     }
 
     /// <summary>
@@ -424,7 +465,12 @@ public class SerialPortRx : ISerialPortRx
     /// <param name="charArray">The character array.</param>
     public void Write(char[] charArray)
     {
-        writeChar?.OnNext(new Tuple<char[], int, int>(charArray, 0, charArray.Length));
+        if (charArray == null)
+        {
+            throw new ArgumentNullException(nameof(charArray));
+        }
+
+        _writeChar?.OnNext(new Tuple<char[], int, int>(charArray, 0, charArray.Length));
     }
 
     /// <summary>
@@ -435,7 +481,7 @@ public class SerialPortRx : ISerialPortRx
     /// <param name="count">The count.</param>
     public void Write(char[] charArray, int offset, int count)
     {
-        writeChar?.OnNext(new Tuple<char[], int, int>(charArray, offset, count));
+        _writeChar?.OnNext(new Tuple<char[], int, int>(charArray, offset, count));
     }
 
     /// <summary>
@@ -444,7 +490,7 @@ public class SerialPortRx : ISerialPortRx
     /// <param name="text">The text.</param>
     public void WriteLine(string text)
     {
-        writeStringLine?.OnNext(text);
+        _writeStringLine?.OnNext(text);
     }
 
     /// <summary>
@@ -456,9 +502,11 @@ public class SerialPortRx : ISerialPortRx
     /// </param>
     protected virtual void Dispose(bool disposing)
     {
-        if (!IsDisposed) {
-            if (disposing) {
-                disposablePort?.Dispose();
+        if (!IsDisposed)
+        {
+            if (disposing)
+            {
+                _disposablePort?.Dispose();
             }
 
             IsDisposed = true;

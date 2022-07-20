@@ -10,22 +10,28 @@ using System.Reactive.Linq;
 
 namespace CP.IO.Ports.Test;
 
-internal class Program
+internal static class Program
 {
     private static void Main(string[] args)
     {
         const string comPortName = "COM1";
+
         // configure the data to write, this can be a string, a byte array, or a char array
         const string dataToWrite = "DataToWrite";
         var dis = new CompositeDisposable();
+
         // Setup the start of message and end of message
-        var startChar = (0x21).AsObservable();
-        var endChar = (0x0a).AsObservable();
+        var startChar = 0x21.AsObservable();
+        var endChar = 0x0a.AsObservable();
+
         // Create a disposable for each COM port to allow automatic disposal upon loss of COM port
         var comdis = new CompositeDisposable();
+
         // Subscribe to com ports available
-        SerialPortRx.PortNames().Do(x => {
-            if (comdis?.Count == 0 && x.Contains(comPortName)) {
+        SerialPortRx.PortNames().Do(x =>
+        {
+            if (comdis?.Count == 0 && x.Contains(comPortName))
+            {
                 // Create a port
                 var port = new SerialPortRx(comPortName, 9600);
                 port.AddTo(comdis);
@@ -42,12 +48,15 @@ internal class Program
 
                 // Open the Com Port after subscriptions created
                 port.Open();
-            } else {
-                comdis.Dispose();
+            }
+            else
+            {
+                comdis?.Dispose();
                 Console.WriteLine($"Port {comPortName} Disposed");
                 comdis = new CompositeDisposable();
             }
-        }).ForEach().Subscribe(name => {
+        }).ForEach().Subscribe(name =>
+        {
             // Show available ports
             Console.WriteLine(name);
         }).AddTo(dis);

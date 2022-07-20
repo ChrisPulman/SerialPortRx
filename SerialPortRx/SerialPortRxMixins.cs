@@ -46,35 +46,51 @@ public static class SerialPortRxMixins
     /// <param name="startsWith">The starts with.</param>
     /// <param name="endsWith">The ends with.</param>
     /// <param name="timeOut">The time out.</param>
-    /// <returns>A string made up from the char values between the start and end chars.</returns>
-    public static IObservable<string> BufferUntil(this IObservable<char> @this, IObservable<char> startsWith, IObservable<char> endsWith, int timeOut) => Observable.Create<string>(o => {
+    /// <param name="scheduler">The scheduler.</param>
+    /// <returns>
+    /// A string made up from the char values between the start and end chars.
+    /// </returns>
+    public static IObservable<string> BufferUntil(this IObservable<char> @this, IObservable<char> startsWith, IObservable<char> endsWith, int timeOut, IScheduler? scheduler = null) => Observable.Create<string>(o =>
+    {
         var dis = new CompositeDisposable();
         var str = string.Empty;
 
         var startFound = false;
         var elapsedTime = 0;
         var startsWithL = ' ';
-        startsWith.Subscribe(sw => {
+        startsWith.Subscribe(sw =>
+        {
             startsWithL = sw;
             elapsedTime = 0;
         }).AddTo(dis);
         var endsWithL = ' ';
         var ewd = endsWith.Subscribe(ew => endsWithL = ew).AddTo(dis);
-        var sub = @this.Subscribe(s => {
+        var sub = @this.Subscribe(s =>
+        {
             elapsedTime = 0;
-            if (startFound || s == startsWithL) {
+            if (startFound || s == startsWithL)
+            {
                 startFound = true;
                 str += s;
-                if (s == endsWithL) {
+                if (s == endsWithL)
+                {
                     o.OnNext(str);
                     startFound = false;
                     str = string.Empty;
                 }
             }
         }).AddTo(dis);
-        Observable.Interval(TimeSpan.FromMilliseconds(1)).Subscribe(_ => {
+
+        if (scheduler == null)
+        {
+            scheduler = new EventLoopScheduler();
+        }
+
+        Observable.Interval(TimeSpan.FromMilliseconds(1), scheduler).Subscribe(_ =>
+        {
             elapsedTime++;
-            if (elapsedTime > timeOut) {
+            if (elapsedTime > timeOut)
+            {
                 startFound = false;
                 str = string.Empty;
                 elapsedTime = 0;
@@ -93,47 +109,63 @@ public static class SerialPortRxMixins
     /// <param name="endsWith">The ends with.</param>
     /// <param name="defaultValue">The default value.</param>
     /// <param name="timeOut">The time out.</param>
-    /// <returns>A string made up from the char values between the start and end chars.</returns>
-    public static IObservable<string> BufferUntil(this IObservable<char> @this, IObservable<char> startsWith, IObservable<char> endsWith, IObservable<string> defaultValue, int timeOut) => Observable.Create<string>(o => {
-        var dis = new CompositeDisposable();
-        var str = string.Empty;
+    /// <param name="scheduler">The scheduler.</param>
+    /// <returns>
+    /// A string made up from the char values between the start and end chars.
+    /// </returns>
+    public static IObservable<string> BufferUntil(this IObservable<char> @this, IObservable<char> startsWith, IObservable<char> endsWith, IObservable<string> defaultValue, int timeOut, IScheduler? scheduler = null) =>
+        Observable.Create<string>(o =>
+        {
+            var dis = new CompositeDisposable();
+            var str = string.Empty;
 
-        var startFound = false;
-        var elapsedTime = 0;
-        var startsWithL = ' ';
-        startsWith.Subscribe(sw => {
-            startsWithL = sw;
-            elapsedTime = 0;
-        }).AddTo(dis);
-        var endsWithL = ' ';
-        endsWith.Subscribe(ew => endsWithL = ew).AddTo(dis);
-        var defaultValueL = string.Empty;
-        defaultValue.Subscribe(dv => defaultValueL = dv).AddTo(dis);
-        @this.Subscribe(s => {
-            elapsedTime = 0;
-            if (startFound || s == startsWithL) {
-                startFound = true;
-                str += s;
-                if (s == endsWithL) {
-                    o.OnNext(str);
+            var startFound = false;
+            var elapsedTime = 0;
+            var startsWithL = ' ';
+            startsWith.Subscribe(sw =>
+            {
+                startsWithL = sw;
+                elapsedTime = 0;
+            }).AddTo(dis);
+            var endsWithL = ' ';
+            endsWith.Subscribe(ew => endsWithL = ew).AddTo(dis);
+            var defaultValueL = string.Empty;
+            defaultValue.Subscribe(dv => defaultValueL = dv).AddTo(dis);
+            @this.Subscribe(s =>
+            {
+                elapsedTime = 0;
+                if (startFound || s == startsWithL)
+                {
+                    startFound = true;
+                    str += s;
+                    if (s == endsWithL)
+                    {
+                        o.OnNext(str);
+                        startFound = false;
+                        str = string.Empty;
+                    }
+                }
+            }).AddTo(dis);
+
+            if (scheduler == null)
+            {
+                scheduler = new EventLoopScheduler();
+            }
+
+            Observable.Interval(TimeSpan.FromMilliseconds(1), scheduler).Subscribe(_ =>
+            {
+                elapsedTime++;
+                if (elapsedTime > timeOut)
+                {
+                    o.OnNext(defaultValueL);
                     startFound = false;
                     str = string.Empty;
+                    elapsedTime = 0;
                 }
-            }
-        }).AddTo(dis);
+            }).AddTo(dis);
 
-        Observable.Interval(TimeSpan.FromMilliseconds(1)).Subscribe(_ => {
-            elapsedTime++;
-            if (elapsedTime > timeOut) {
-                o.OnNext(defaultValueL);
-                startFound = false;
-                str = string.Empty;
-                elapsedTime = 0;
-            }
-        }).AddTo(dis);
-
-        return dis;
-    });
+            return dis;
+        });
 
     /// <summary>
     /// Monitors the received observer.
@@ -156,11 +188,15 @@ public static class SerialPortRxMixins
     /// <param name="this">The this.</param>
     /// <returns>Observable value.</returns>
     public static IObservable<T> ForEach<T>(this IObservable<T[]> @this) =>
-                                        Observable.Create<T>(obs => {
+                                        Observable.Create<T>(obs =>
+                                        {
                                             return @this.Subscribe(
-                                                list => {
-                                                    foreach (var item in list) {
-                                                        if (!EqualityComparer<T>.Default.Equals(item, default)) {
+                                                list =>
+                                                {
+                                                    foreach (var item in list)
+                                                    {
+                                                        if (!EqualityComparer<T>.Default.Equals(item, default!))
+                                                        {
                                                             obs.OnNext(item);
                                                         }
                                                     }
@@ -243,13 +279,15 @@ where TException : Exception => source.OnErrorRetry(onError, retryCount, delay, 
                     this IObservable<TSource> source, Action<TException> onError, int retryCount, TimeSpan delay, IScheduler delayScheduler)
                     where TException : Exception
     {
-        var result = Observable.Defer(() => {
+        return Observable.Defer(() =>
+        {
             var dueTime = (delay.Ticks < 0) ? TimeSpan.Zero : delay;
             var empty = Observable.Empty<TSource>();
             var count = 0;
 
-            IObservable<TSource> self = null;
-            self = source.Catch((TException ex) => {
+            var self = default(IObservable<TSource>)!;
+            self = source.Catch((TException ex) =>
+            {
                 onError(ex);
                 return (++count < retryCount)
                 ? (dueTime == TimeSpan.Zero)
@@ -260,8 +298,6 @@ where TException : Exception => source.OnErrorRetry(onError, retryCount, delay, 
 
             return self;
         });
-
-        return result;
     }
 
     /// <summary>
@@ -271,8 +307,9 @@ where TException : Exception => source.OnErrorRetry(onError, retryCount, delay, 
     /// <param name="timespan">The timespan at which to notify.</param>
     /// <returns>Observable value.</returns>
     public static IObservable<bool> WhileIsOpen(this SerialPortRx @this, TimeSpan timespan) =>
-        Observable.Defer(() => Observable.Create<bool>(obs => {
-            var isOpen = Observable.Interval(timespan).CombineLatest(@this.isOpen, (_, b) => b).Where(x => x);
+        Observable.Defer(() => Observable.Create<bool>(obs =>
+        {
+            var isOpen = Observable.Interval(timespan).CombineLatest(@this.IsOpenObservable, (_, b) => b).Where(x => x);
             return isOpen.Subscribe(obs);
         }));
 }
