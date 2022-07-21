@@ -108,6 +108,16 @@ public interface ISerialPortRx : IDisposable
     void Close();
 
     /// <summary>
+    /// Discards the in buffer.
+    /// </summary>
+    void DiscardInBuffer();
+
+    /// <summary>
+    /// Discards the out buffer.
+    /// </summary>
+    void DiscardOutBuffer();
+
+    /// <summary>
     /// Opens this instance.
     /// </summary>
     /// <returns>A Task.</returns>

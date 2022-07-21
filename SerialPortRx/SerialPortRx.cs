@@ -31,6 +31,8 @@ public class SerialPortRx : ISerialPortRx
     private readonly ISubject<Tuple<char[], int, int>> _writeChar = new Subject<Tuple<char[], int, int>>();
     private readonly ISubject<string> _writeString = new Subject<string>();
     private readonly ISubject<string> _writeStringLine = new Subject<string>();
+    private readonly ISubject<Unit> _discardInBuffer = new Subject<Unit>();
+    private readonly ISubject<Unit> _discardOutBuffer = new Subject<Unit>();
     private readonly CompositeDisposable _disposablePort = new();
 
     /// <summary>
@@ -356,6 +358,32 @@ public class SerialPortRx : ISerialPortRx
                     }
                 },
                 obs.OnError));
+            dis.Add(_discardInBuffer.Subscribe(
+                x =>
+                {
+                    try
+                    {
+                        port?.DiscardInBuffer();
+                    }
+                    catch (Exception ex)
+                    {
+                        obs.OnError(ex);
+                    }
+                },
+                obs.OnError));
+            dis.Add(_discardOutBuffer.Subscribe(
+                x =>
+                {
+                    try
+                    {
+                        port?.DiscardOutBuffer();
+                    }
+                    catch (Exception ex)
+                    {
+                        obs.OnError(ex);
+                    }
+                },
+                obs.OnError));
         }
 
         return Disposable.Create(() =>
@@ -413,6 +441,16 @@ public class SerialPortRx : ISerialPortRx
     /// Closes this instance.
     /// </summary>
     public void Close() => _disposablePort?.Dispose();
+
+    /// <summary>
+    /// Discards the in buffer.
+    /// </summary>
+    public void DiscardInBuffer() => _discardInBuffer.OnNext(Unit.Default);
+
+    /// <summary>
+    /// Discards the out buffer.
+    /// </summary>
+    public void DiscardOutBuffer() => _discardOutBuffer.OnNext(Unit.Default);
 
     /// <summary>
     /// Performs application-defined tasks associated with freeing, releasing, or resetting
