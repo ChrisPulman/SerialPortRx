@@ -239,6 +239,17 @@ public class SerialPortRx : ISerialPortRx
     [MonitoringDescription("WriteTimeout")]
     public int WriteTimeout { get; set; } = -1;
 
+    /// <summary>
+    /// Gets or sets creates new line.
+    /// </summary>
+    /// <value>
+    /// The new line.
+    /// </value>
+    [Browsable(false)]
+    [DefaultValue("\n")]
+    [MonitoringDescription("NewLine")]
+    public string NewLine { get; set; } = "\n";
+
     private IObservable<Unit> Connect => Observable.Create<Unit>(obs =>
     {
         var dis = new CompositeDisposable();
@@ -252,8 +263,10 @@ public class SerialPortRx : ISerialPortRx
         {
             // Setup Com Port
             var port = new SerialPort(PortName, BaudRate, Parity, DataBits, StopBits);
+
             dis.Add(port);
             port.Close();
+            port.NewLine = NewLine;
             port.Handshake = Handshake;
             port.ReadTimeout = ReadTimeout;
             port.WriteTimeout = WriteTimeout;
@@ -399,10 +412,7 @@ public class SerialPortRx : ISerialPortRx
     /// <summary>
     /// Closes this instance.
     /// </summary>
-    public void Close()
-    {
-        _disposablePort?.Dispose();
-    }
+    public void Close() => _disposablePort?.Dispose();
 
     /// <summary>
     /// Performs application-defined tasks associated with freeing, releasing, or resetting
@@ -420,19 +430,15 @@ public class SerialPortRx : ISerialPortRx
     /// <returns>
     /// A Task.
     /// </returns>
-    public Task Open()
-    {
-        return _disposablePort?.Count == 0 ? Task.Run(() => Connect.Subscribe().AddTo(_disposablePort)) : Task.CompletedTask;
-    }
+    public Task Open() =>
+        _disposablePort?.Count == 0 ? Task.Run(() => Connect.Subscribe().AddTo(_disposablePort)) : Task.CompletedTask;
 
     /// <summary>
     /// Writes the specified text.
     /// </summary>
     /// <param name="text">The text.</param>
-    public void Write(string text)
-    {
+    public void Write(string text) =>
         _writeString?.OnNext(text);
-    }
 
     /// <summary>
     /// Writes the specified byte array.
@@ -440,10 +446,8 @@ public class SerialPortRx : ISerialPortRx
     /// <param name="byteArray">The byte array.</param>
     /// <param name="offset">The offset.</param>
     /// <param name="count">The count.</param>
-    public void Write(byte[] byteArray, int offset, int count)
-    {
+    public void Write(byte[] byteArray, int offset, int count) =>
         _writeByte?.OnNext(new Tuple<byte[], int, int>(byteArray, offset, count));
-    }
 
     /// <summary>
     /// Writes the specified byte array.
@@ -479,19 +483,15 @@ public class SerialPortRx : ISerialPortRx
     /// <param name="charArray">The character array.</param>
     /// <param name="offset">The offset.</param>
     /// <param name="count">The count.</param>
-    public void Write(char[] charArray, int offset, int count)
-    {
+    public void Write(char[] charArray, int offset, int count) =>
         _writeChar?.OnNext(new Tuple<char[], int, int>(charArray, offset, count));
-    }
 
     /// <summary>
     /// Writes the line.
     /// </summary>
     /// <param name="text">The text.</param>
-    public void WriteLine(string text)
-    {
+    public void WriteLine(string text) =>
         _writeStringLine?.OnNext(text);
-    }
 
     /// <summary>
     /// Releases unmanaged and - optionally - managed resources.

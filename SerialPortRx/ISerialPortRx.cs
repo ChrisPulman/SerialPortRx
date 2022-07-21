@@ -95,6 +95,14 @@ public interface ISerialPortRx : IDisposable
     int WriteTimeout { get; set; }
 
     /// <summary>
+    /// Gets or sets the new line.
+    /// </summary>
+    /// <value>
+    /// The new line.
+    /// </value>
+    string NewLine { get; set; }
+
+    /// <summary>
     /// Closes this instance.
     /// </summary>
     void Close();
