@@ -34,6 +34,14 @@ public class UdpClientRx : IPortRx
     /// <summary>
     /// Initializes a new instance of the <see cref="UdpClientRx"/> class.
     /// </summary>
+    public UdpClientRx()
+            : this(AddressFamily.InterNetwork)
+    {
+    }
+
+    /// <summary>
+    /// Initializes a new instance of the <see cref="UdpClientRx"/> class.
+    /// </summary>
     /// <param name="udpClient">The UDP client.</param>
     public UdpClientRx(UdpClient udpClient) => _udpClient = udpClient;
 
@@ -52,16 +60,15 @@ public class UdpClientRx : IPortRx
     /// <summary>
     /// Initializes a new instance of the <see cref="UdpClientRx"/> class.
     /// </summary>
-    public UdpClientRx()
-            : this(AddressFamily.InterNetwork)
-    {
-    }
+    /// <param name="family">The family.</param>
+    public UdpClientRx(AddressFamily family) => _udpClient = new(family);
 
     /// <summary>
     /// Initializes a new instance of the <see cref="UdpClientRx"/> class.
     /// </summary>
+    /// <param name="port">The port.</param>
     /// <param name="family">The family.</param>
-    public UdpClientRx(AddressFamily family) => _udpClient = new(family);
+    public UdpClientRx(int port, AddressFamily family) => _udpClient = new(port, family);
 
     /// <summary>
     /// Initializes a new instance of the <see cref="UdpClientRx"/> class.
@@ -69,6 +76,54 @@ public class UdpClientRx : IPortRx
     /// <param name="hostname">The hostname.</param>
     /// <param name="port">The port.</param>
     public UdpClientRx(string hostname, int port) => _udpClient = new(hostname, port);
+
+    /// <summary>
+    /// Gets the available.
+    /// </summary>
+    /// <value>
+    /// The available.
+    /// </value>
+    public int Available => _udpClient!.Available;
+
+    /// <summary>
+    /// Gets or sets the TTL.
+    /// </summary>
+    /// <value>
+    /// The TTL.
+    /// </value>
+    public short Ttl { get => _udpClient!.Ttl; set => _udpClient!.Ttl = value; }
+
+    /// <summary>
+    /// Gets or sets a value indicating whether [dont fragment].
+    /// </summary>
+    /// <value>
+    ///   <c>true</c> if [dont fragment]; otherwise, <c>false</c>.
+    /// </value>
+    public bool DontFragment { get => _udpClient!.DontFragment; set => _udpClient!.DontFragment = value; }
+
+    /// <summary>
+    /// Gets or sets a value indicating whether [multicast loopback].
+    /// </summary>
+    /// <value>
+    ///   <c>true</c> if [multicast loopback]; otherwise, <c>false</c>.
+    /// </value>
+    public bool MulticastLoopback { get => _udpClient!.MulticastLoopback; set => _udpClient!.MulticastLoopback = value; }
+
+    /// <summary>
+    /// Gets or sets a value indicating whether [enable broadcast].
+    /// </summary>
+    /// <value>
+    ///   <c>true</c> if [enable broadcast]; otherwise, <c>false</c>.
+    /// </value>
+    public bool EnableBroadcast { get => _udpClient!.EnableBroadcast; set => _udpClient!.EnableBroadcast = value; }
+
+    /// <summary>
+    /// Gets or sets a value indicating whether [exclusive address use].
+    /// </summary>
+    /// <value>
+    ///   <c>true</c> if [exclusive address use]; otherwise, <c>false</c>.
+    /// </value>
+    public bool ExclusiveAddressUse { get => _udpClient!.ExclusiveAddressUse; set => _udpClient!.ExclusiveAddressUse = value; }
 
     /// <summary>
     /// Gets the infinite timeout.
@@ -79,12 +134,12 @@ public class UdpClientRx : IPortRx
     public int InfiniteTimeout => Timeout.Infinite;
 
     /// <summary>
-    /// Gets the underlying System.Net.Sockets.Socket.
+    /// Gets or sets the underlying System.Net.Sockets.Socket.
     /// </summary>
     /// <value>
     /// The underlying network System.Net.Sockets.Socket.
     /// </value>
-    public Socket Client => _udpClient!.Client;
+    public Socket Client { get => _udpClient!.Client; set => _udpClient!.Client = value; }
 
     /// <summary>
     /// Gets or sets the read timeout.
@@ -121,6 +176,12 @@ public class UdpClientRx : IPortRx
     /// </summary>
     /// <value>The data received.</value>
     public IObservable<int> BytesReceived => _bytesReceived.Retry().Publish().RefCount();
+
+    /// <summary>
+    /// Allows the nat traversal.
+    /// </summary>
+    /// <param name="allowed">if set to <c>true</c> [allowed].</param>
+    public void AllowNatTraversal(bool allowed) => _udpClient!.AllowNatTraversal(allowed);
 
     /// <summary>
     /// Connects the specified hostname.
