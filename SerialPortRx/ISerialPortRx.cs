@@ -5,14 +5,13 @@
 
 using System;
 using System.IO.Ports;
-using System.Threading.Tasks;
 
 namespace CP.IO.Ports;
 
 /// <summary>
 /// Serial Port Rx interface.
 /// </summary>
-public interface ISerialPortRx : IDisposable
+public interface ISerialPortRx : IPortRx
 {
     /// <summary>
     /// Gets or sets the baud rate.
@@ -77,22 +76,10 @@ public interface ISerialPortRx : IDisposable
     string PortName { get; set; }
 
     /// <summary>
-    /// Gets or sets the read timeout.
-    /// </summary>
-    /// <value>The read timeout.</value>
-    int ReadTimeout { get; set; }
-
-    /// <summary>
     /// Gets or sets the stop bits.
     /// </summary>
     /// <value>The stop bits.</value>
     StopBits StopBits { get; set; }
-
-    /// <summary>
-    /// Gets or sets the write timeout.
-    /// </summary>
-    /// <value>The write timeout.</value>
-    int WriteTimeout { get; set; }
 
     /// <summary>
     /// Gets or sets the new line.
@@ -103,25 +90,9 @@ public interface ISerialPortRx : IDisposable
     string NewLine { get; set; }
 
     /// <summary>
-    /// Closes this instance.
-    /// </summary>
-    void Close();
-
-    /// <summary>
-    /// Discards the in buffer.
-    /// </summary>
-    void DiscardInBuffer();
-
-    /// <summary>
     /// Discards the out buffer.
     /// </summary>
     void DiscardOutBuffer();
-
-    /// <summary>
-    /// Opens this instance.
-    /// </summary>
-    /// <returns>A Task.</returns>
-    Task Open();
 
     /// <summary>
     /// Writes the specified byte array.
@@ -148,14 +119,6 @@ public interface ISerialPortRx : IDisposable
     /// </summary>
     /// <param name="charArray">The character array.</param>
     void Write(char[] charArray);
-
-    /// <summary>
-    /// Writes the specified byte array.
-    /// </summary>
-    /// <param name="byteArray">The byte array.</param>
-    /// <param name="offset">The offset.</param>
-    /// <param name="count">The count.</param>
-    void Write(byte[] byteArray, int offset, int count);
 
     /// <summary>
     /// Writes the line.

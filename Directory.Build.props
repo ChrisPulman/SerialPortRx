@@ -1,7 +1,7 @@
 <Project DefaultTargets="Build"
   xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <PropertyGroup>
-    <Version>2.1.4</Version>
+    <Version>2.2.0</Version>
     <Authors>Chris Pulman</Authors>
     <TargetFrameworks>net461;netstandard2.0;net6.0;</TargetFrameworks>
     <Description>An Observable Com port extension of System.IO.Ports.SerialPort</Description>
@@ -13,7 +13,7 @@
     <NoWarn>CS1591</NoWarn>
     <Nullable>enable</Nullable>
     <Configurations>Debug;Release;PreRelease</Configurations>
-    <PackageReleaseNotes>Added compatability with Net 6 and netstandard2.0, removed Net 5 and netcore3.1</PackageReleaseNotes>
+    <PackageReleaseNotes>Added UdpClientRx and TcpClientRx. Added SerialPortRx ReadAsync NOTE: NEW FUNCTIONS NOT FULLY TESTED!!</PackageReleaseNotes>
     <EnableNETAnalyzers>True</EnableNETAnalyzers>
     <AnalysisLevel>latest</AnalysisLevel>
   </PropertyGroup>

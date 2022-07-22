@@ -27,13 +27,17 @@ public class SerialPortRx : ISerialPortRx
     private readonly ISubject<bool> _isOpenValue = new ReplaySubject<bool>(1);
     private readonly ISubject<char> _dataReceived = new Subject<char>();
     private readonly ISubject<Exception> _errors = new Subject<Exception>();
-    private readonly ISubject<Tuple<byte[], int, int>> _writeByte = new Subject<Tuple<byte[], int, int>>();
-    private readonly ISubject<Tuple<char[], int, int>> _writeChar = new Subject<Tuple<char[], int, int>>();
+    private readonly ISubject<(byte[] byteArray, int offset, int count)> _writeByte = new Subject<(byte[] byteArray, int offset, int count)>();
+    private readonly ISubject<(char[] charArray, int offset, int count)> _writeChar = new Subject<(char[] charArray, int offset, int count)>();
     private readonly ISubject<string> _writeString = new Subject<string>();
     private readonly ISubject<string> _writeStringLine = new Subject<string>();
     private readonly ISubject<Unit> _discardInBuffer = new Subject<Unit>();
     private readonly ISubject<Unit> _discardOutBuffer = new Subject<Unit>();
-    private readonly CompositeDisposable _disposablePort = new();
+    private readonly ISubject<(byte[] buffer, int offset, int count)> _readBytes = new Subject<(byte[] buffer, int offset, int count)>();
+    private readonly ISubject<int> _bytesRead = new Subject<int>();
+    private readonly ISubject<int> _bytesReceived = new Subject<int>();
+    private CompositeDisposable _disposablePort = new();
+    private bool _readBusy;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="SerialPortRx"/> class.
@@ -114,10 +118,7 @@ public class SerialPortRx : ISerialPortRx
     /// Initializes a new instance of the <see cref="SerialPortRx" /> class.
     /// </summary>
     /// <param name="port">The port.</param>
-    public SerialPortRx(string port)
-    {
-        PortName = port;
-    }
+    public SerialPortRx(string port) => PortName = port;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="SerialPortRx"/> class.
@@ -125,6 +126,14 @@ public class SerialPortRx : ISerialPortRx
     public SerialPortRx()
     {
     }
+
+    /// <summary>
+    /// Gets indicates that no timeout should occur.
+    /// </summary>
+    [Browsable(true)]
+    [DefaultValue(-1)]
+    [MonitoringDescription("InfiniteTimeout")]
+    public int InfiniteTimeout => SerialPort.InfiniteTimeout;
 
     /// <summary>
     /// Gets or sets the baud rate.
@@ -149,6 +158,12 @@ public class SerialPortRx : ISerialPortRx
     /// </summary>
     /// <value>The data received.</value>
     public IObservable<char> DataReceived => _dataReceived.Retry().Publish().RefCount();
+
+    /// <summary>
+    /// Gets the data received when executing ReadAsync.
+    /// </summary>
+    /// <value>The data received.</value>
+    public IObservable<int> BytesReceived => _bytesReceived.Retry().Publish().RefCount();
 
     /// <summary>
     /// Gets or sets the encoding.
@@ -337,7 +352,7 @@ public class SerialPortRx : ISerialPortRx
                 {
                     try
                     {
-                        port?.Write(x.Item1, x.Item2, x.Item3);
+                        port?.Write(x.byteArray, x.offset, x.count);
                     }
                     catch (Exception ex)
                     {
@@ -350,7 +365,7 @@ public class SerialPortRx : ISerialPortRx
                 {
                     try
                     {
-                        port?.Write(x.Item1, x.Item2, x.Item3);
+                        port?.Write(x.charArray, x.offset, x.count);
                     }
                     catch (Exception ex)
                     {
@@ -359,7 +374,7 @@ public class SerialPortRx : ISerialPortRx
                 },
                 obs.OnError));
             dis.Add(_discardInBuffer.Subscribe(
-                x =>
+                _ =>
                 {
                     try
                     {
@@ -372,7 +387,7 @@ public class SerialPortRx : ISerialPortRx
                 },
                 obs.OnError));
             dis.Add(_discardOutBuffer.Subscribe(
-                x =>
+                _ =>
                 {
                     try
                     {
@@ -381,6 +396,37 @@ public class SerialPortRx : ISerialPortRx
                     catch (Exception ex)
                     {
                         obs.OnError(ex);
+                    }
+                },
+                obs.OnError));
+            dis.Add(_readBytes.Subscribe(
+                async x =>
+                {
+                    try
+                    {
+                        while (_readBusy)
+                        {
+                            await Task.Delay(1);
+                        }
+
+                        _readBusy = true;
+                        await Task.Delay(1);
+                        var br = port?.Read(x.buffer, x.offset, x.count);
+                        for (var i = 0; i < br!.Value; i++)
+                        {
+                            var item = x.buffer[i];
+                            _bytesReceived.OnNext(item);
+                        }
+
+                        _bytesRead.OnNext(br!.Value);
+                    }
+                    catch (Exception ex)
+                    {
+                        obs.OnError(ex);
+                    }
+                    finally
+                    {
+                        _readBusy = false;
                     }
                 },
                 obs.OnError));
@@ -468,8 +514,15 @@ public class SerialPortRx : ISerialPortRx
     /// <returns>
     /// A Task.
     /// </returns>
-    public Task Open() =>
-        _disposablePort?.Count == 0 ? Task.Run(() => Connect.Subscribe().AddTo(_disposablePort)) : Task.CompletedTask;
+    public Task Open()
+    {
+        if (_disposablePort?.IsDisposed != false)
+        {
+            _disposablePort = new();
+        }
+
+        return _disposablePort?.Count == 0 ? Task.Run(() => Connect.Subscribe().AddTo(_disposablePort)) : Task.CompletedTask;
+    }
 
     /// <summary>
     /// Writes the specified text.
@@ -485,7 +538,7 @@ public class SerialPortRx : ISerialPortRx
     /// <param name="offset">The offset.</param>
     /// <param name="count">The count.</param>
     public void Write(byte[] byteArray, int offset, int count) =>
-        _writeByte?.OnNext(new Tuple<byte[], int, int>(byteArray, offset, count));
+        _writeByte?.OnNext((byteArray, offset, count));
 
     /// <summary>
     /// Writes the specified byte array.
@@ -498,7 +551,7 @@ public class SerialPortRx : ISerialPortRx
             throw new ArgumentNullException(nameof(byteArray));
         }
 
-        _writeByte?.OnNext(new Tuple<byte[], int, int>(byteArray, 0, byteArray.Length));
+        _writeByte?.OnNext((byteArray, 0, byteArray.Length));
     }
 
     /// <summary>
@@ -512,7 +565,7 @@ public class SerialPortRx : ISerialPortRx
             throw new ArgumentNullException(nameof(charArray));
         }
 
-        _writeChar?.OnNext(new Tuple<char[], int, int>(charArray, 0, charArray.Length));
+        _writeChar?.OnNext((charArray, 0, charArray.Length));
     }
 
     /// <summary>
@@ -522,7 +575,7 @@ public class SerialPortRx : ISerialPortRx
     /// <param name="offset">The offset.</param>
     /// <param name="count">The count.</param>
     public void Write(char[] charArray, int offset, int count) =>
-        _writeChar?.OnNext(new Tuple<char[], int, int>(charArray, offset, count));
+        _writeChar?.OnNext((charArray, offset, count));
 
     /// <summary>
     /// Writes the line.
@@ -530,6 +583,21 @@ public class SerialPortRx : ISerialPortRx
     /// <param name="text">The text.</param>
     public void WriteLine(string text) =>
         _writeStringLine?.OnNext(text);
+
+    /// <summary>
+    /// Reads the specified buffer.
+    /// </summary>
+    /// <param name="buffer">The buffer.</param>
+    /// <param name="offset">The offset.</param>
+    /// <param name="count">The count.</param>
+    /// <returns>
+    /// The number of bytes read.
+    /// </returns>
+    public async Task<int> ReadAsync(byte[] buffer, int offset, int count)
+    {
+        _readBytes.OnNext((buffer, offset, count));
+        return await _bytesRead;
+    }
 
     /// <summary>
     /// Releases unmanaged and - optionally - managed resources.
