@@ -94,7 +94,7 @@ public class TcpClientRx : IPortRx
     /// <value>
     /// The stream.
     /// </value>
-    public Stream Stream => _tcpClient!.GetStream();
+    public NetworkStream Stream => _tcpClient!.GetStream();
 
     /// <summary>
     /// Gets or sets the write timeout.

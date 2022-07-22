@@ -1,7 +1,7 @@
 <Project DefaultTargets="Build"
   xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <PropertyGroup>
-    <Version>2.2.2</Version>
+    <Version>2.2.3</Version>
     <Authors>Chris Pulman</Authors>
     <TargetFrameworks>net461;netstandard2.0;net6.0;</TargetFrameworks>
     <Description>An Observable Com port extension of System.IO.Ports.SerialPort</Description>

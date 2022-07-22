@@ -136,6 +136,12 @@ public class UdpClientRx : IPortRx
     }).Publish().RefCount();
 
     /// <summary>
+    /// Returns a UDP datagram asynchronously that was sent by a remote host.
+    /// </summary>
+    /// <returns>The task object representing the asynchronous operation.</returns>
+    public Task<UdpReceiveResult> ReceiveAsync() => _udpClient?.ReceiveAsync()!;
+
+    /// <summary>
     /// Opens this instance.
     /// </summary>
     /// <returns>A Task.</returns>
