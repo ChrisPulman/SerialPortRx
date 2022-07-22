@@ -205,6 +205,16 @@ public class UdpClientRx : IPortRx
     }
 
     /// <summary>
+    /// Sends a UDP datagram asynchronously to a remote host.
+    /// </summary>
+    /// <param name="dataGram">The data gram.</param>
+    /// <param name="bytes">The bytes.</param>
+    /// <param name="endPoint">The end point.</param>
+    /// <returns>A Task of int.</returns>
+    public Task<int> SendAsync(byte[] dataGram, int bytes, IPEndPoint endPoint) =>
+        _udpClient!.SendAsync(dataGram, bytes, endPoint);
+
+    /// <summary>
     /// Reads the specified buffer.
     /// </summary>
     /// <param name="buffer">The buffer.</param>
