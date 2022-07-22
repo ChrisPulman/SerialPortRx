@@ -4,6 +4,7 @@
 // </copyright>
 
 using System;
+using System.IO;
 using System.Net;
 using System.Net.Sockets;
 using System.Reactive;
@@ -69,9 +70,25 @@ public class TcpClientRx : IPortRx
     /// </value>
     public int ReadTimeout
     {
-        get => _tcpClient!.GetStream().ReadTimeout;
-        set => _tcpClient!.GetStream().ReadTimeout = value;
+        get => Stream.ReadTimeout;
+        set => Stream.ReadTimeout = value;
     }
+
+    /// <summary>
+    /// Gets the underlying System.Net.Sockets.Socket.
+    /// </summary>
+    /// <value>
+    /// The underlying network System.Net.Sockets.Socket.
+    /// </value>
+    public Socket Client => _tcpClient!.Client;
+
+    /// <summary>
+    /// Gets the System.Net.Sockets.NetworkStream used to send and receive data.
+    /// </summary>
+    /// <value>
+    /// The stream.
+    /// </value>
+    public Stream Stream => _tcpClient!.GetStream();
 
     /// <summary>
     /// Gets or sets the write timeout.
@@ -81,8 +98,8 @@ public class TcpClientRx : IPortRx
     /// </value>
     public int WriteTimeout
     {
-        get => _tcpClient!.GetStream().WriteTimeout;
-        set => _tcpClient!.GetStream().WriteTimeout = value;
+        get => Stream.WriteTimeout;
+        set => Stream.WriteTimeout = value;
     }
 
     /// <summary>
@@ -101,7 +118,7 @@ public class TcpClientRx : IPortRx
     {
         var dis = new CompositeDisposable();
         var lastValue = -1;
-        dis.Add(Observable.While(() => true, Observable.Return(_tcpClient.GetStream().ReadByte())).Retry()
+        dis.Add(Observable.While(() => true, Observable.Return(Stream.ReadByte())).Retry()
         .Subscribe(
             d =>
             {
@@ -150,7 +167,7 @@ public class TcpClientRx : IPortRx
     /// <param name="offset">The offset.</param>
     /// <param name="count">The count.</param>
     public void Write(byte[] buffer, int offset, int count) =>
-        _tcpClient!.GetStream().Write(buffer, offset, count);
+        Stream.Write(buffer, offset, count);
 
     /// <summary>
     /// Reads the specified buffer.
@@ -162,7 +179,7 @@ public class TcpClientRx : IPortRx
     public async Task<int> ReadAsync(byte[] buffer, int offset, int count)
     {
 #pragma warning disable CA1835 // Change the 'ReadAsync' method call to use the 'Stream.ReadAsync(Memory<byte>, CancellationToken)' overload.
-        var read = await _tcpClient!.GetStream().ReadAsync(buffer, offset, count);
+        var read = await Stream.ReadAsync(buffer, offset, count);
 #pragma warning restore CA1835 // Change the 'ReadAsync' method call to use the 'Stream.ReadAsync(Memory<byte>, CancellationToken)' overload.
         if (buffer?.Length > 0)
         {
@@ -180,7 +197,7 @@ public class TcpClientRx : IPortRx
     /// Discards the in buffer.
     /// </summary>
     public void DiscardInBuffer() =>
-        _tcpClient!.GetStream().Flush();
+        Stream.Flush();
 
     /// <summary>
     /// Performs application-defined tasks associated with freeing, releasing, or resetting unmanaged resources.

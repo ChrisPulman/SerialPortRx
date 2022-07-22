@@ -67,6 +67,14 @@ public class UdpClientRx : IPortRx
     public int InfiniteTimeout => Timeout.Infinite;
 
     /// <summary>
+    /// Gets the underlying System.Net.Sockets.Socket.
+    /// </summary>
+    /// <value>
+    /// The underlying network System.Net.Sockets.Socket.
+    /// </value>
+    public Socket Client => _udpClient!.Client;
+
+    /// <summary>
     /// Gets or sets the read timeout.
     /// </summary>
     /// <value>
@@ -74,8 +82,8 @@ public class UdpClientRx : IPortRx
     /// </value>
     public int ReadTimeout
     {
-        get => _udpClient!.Client.ReceiveTimeout;
-        set => _udpClient!.Client.ReceiveTimeout = value;
+        get => Client.ReceiveTimeout;
+        set => Client.ReceiveTimeout = value;
     }
 
     /// <summary>
@@ -86,8 +94,8 @@ public class UdpClientRx : IPortRx
     /// </value>
     public int WriteTimeout
     {
-        get => _udpClient!.Client.SendTimeout;
-        set => _udpClient!.Client.SendTimeout = value;
+        get => Client.SendTimeout;
+        set => Client.SendTimeout = value;
     }
 
     /// <summary>
@@ -181,7 +189,7 @@ public class UdpClientRx : IPortRx
                 "Argument count cannot be greater than the length of buffer minus offset.");
         }
 
-        _udpClient?.Client.Send(buffer.Skip(offset).Take(count).ToArray());
+        Client.Send(buffer.Skip(offset).Take(count).ToArray());
     }
 
     /// <summary>
@@ -231,7 +239,7 @@ public class UdpClientRx : IPortRx
              {
                  if (_bufferOffset == 0)
                  {
-                     _bufferOffset = _udpClient!.Client.Receive(_buffer);
+                     _bufferOffset = Client.Receive(_buffer);
                  }
 
                  if (_bufferOffset < count)
