@@ -34,6 +34,12 @@ public class UdpClientRx : IPortRx
     /// <summary>
     /// Initializes a new instance of the <see cref="UdpClientRx"/> class.
     /// </summary>
+    /// <param name="udpClient">The UDP client.</param>
+    public UdpClientRx(UdpClient udpClient) => _udpClient = udpClient;
+
+    /// <summary>
+    /// Initializes a new instance of the <see cref="UdpClientRx"/> class.
+    /// </summary>
     /// <param name="localEP">The local ep.</param>
     public UdpClientRx(IPEndPoint localEP) => _udpClient = new(localEP);
 

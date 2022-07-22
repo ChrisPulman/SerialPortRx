@@ -30,6 +30,12 @@ public class TcpClientRx : IPortRx
     /// <summary>
     /// Initializes a new instance of the <see cref="TcpClientRx"/> class.
     /// </summary>
+    /// <param name="tcpClient">The TCP client.</param>
+    public TcpClientRx(TcpClient tcpClient) => _tcpClient = tcpClient;
+
+    /// <summary>
+    /// Initializes a new instance of the <see cref="TcpClientRx"/> class.
+    /// </summary>
     /// <param name="localEP">The local ep.</param>
     public TcpClientRx(IPEndPoint localEP) => _tcpClient = new(localEP);
 
