@@ -46,6 +46,12 @@ public class UdpClientRx : IPortRx
     /// <summary>
     /// Initializes a new instance of the <see cref="UdpClientRx"/> class.
     /// </summary>
+    /// <param name="port">The port.</param>
+    public UdpClientRx(int port) => _udpClient = new(port);
+
+    /// <summary>
+    /// Initializes a new instance of the <see cref="UdpClientRx"/> class.
+    /// </summary>
     public UdpClientRx()
             : this(AddressFamily.InterNetwork)
     {
@@ -116,24 +122,28 @@ public class UdpClientRx : IPortRx
     /// <value>The data received.</value>
     public IObservable<int> BytesReceived => _bytesReceived.Retry().Publish().RefCount();
 
-    private IObservable<Unit> Connect => Observable.Create<Unit>(obs =>
-    {
-        var dis = new CompositeDisposable
-        {
-            _udpClient!.ReceiveAsync()
-            .ToObservable()
-            .Select(x => x.Buffer)
-            .ForEach()
-            .Retry()
-            .Subscribe(d => _dataReceived.OnNext(d), obs.OnError)
-        };
+    /// <summary>
+    /// Connects the specified hostname.
+    /// </summary>
+    /// <param name="hostname">The hostname.</param>
+    /// <param name="port">The port.</param>
+    public void Connect(string hostname, int port) =>
+        _udpClient!.Connect(hostname, port);
 
-        obs.OnNext(Unit.Default);
-        return Disposable.Create(() =>
-        {
-            dis.Dispose();
-        });
-    }).Publish().RefCount();
+    /// <summary>
+    /// Connects the specified addr.
+    /// </summary>
+    /// <param name="addr">The addr.</param>
+    /// <param name="port">The port.</param>
+    public void Connect(IPAddress addr, int port) =>
+        _udpClient!.Connect(addr, port);
+
+    /// <summary>
+    /// Connects the specified end point.
+    /// </summary>
+    /// <param name="endPoint">The end point.</param>
+    public void Connect(IPEndPoint endPoint) =>
+        _udpClient!.Connect(endPoint);
 
     /// <summary>
     /// Returns a UDP datagram asynchronously that was sent by a remote host.
@@ -152,7 +162,7 @@ public class UdpClientRx : IPortRx
             _disposablePort = new();
         }
 
-        return _disposablePort?.Count == 0 ? Task.Run(() => Connect.Subscribe().AddTo(_disposablePort)) : Task.CompletedTask;
+        return _disposablePort?.Count == 0 ? Task.Run(() => Connect().Subscribe().AddTo(_disposablePort)) : Task.CompletedTask;
     }
 
     /// <summary>
@@ -322,4 +332,23 @@ public class UdpClientRx : IPortRx
             _disposedValue = true;
         }
     }
+
+    private IObservable<Unit> Connect() => Observable.Create<Unit>(obs =>
+    {
+        var dis = new CompositeDisposable
+        {
+            _udpClient!.ReceiveAsync()
+            .ToObservable()
+            .Select(x => x.Buffer)
+            .ForEach()
+            .Retry()
+            .Subscribe(d => _dataReceived.OnNext(d), obs.OnError)
+        };
+
+        obs.OnNext(Unit.Default);
+        return Disposable.Create(() =>
+        {
+            dis.Dispose();
+        });
+    }).Publish().RefCount();
 }

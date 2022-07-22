@@ -4,7 +4,6 @@
 // </copyright>
 
 using System;
-using System.IO;
 using System.Net;
 using System.Net.Sockets;
 using System.Reactive;
@@ -120,32 +119,36 @@ public class TcpClientRx : IPortRx
     /// <value>The data received.</value>
     public IObservable<int> BytesReceived => _bytesReceived.Retry().Publish().RefCount();
 
-    private IObservable<Unit> Connect => Observable.Create<Unit>(obs =>
-    {
-        var dis = new CompositeDisposable();
-        var lastValue = -1;
-        dis.Add(Observable.While(() => true, Observable.Return(Stream.ReadByte())).Retry()
-        .Subscribe(
-            d =>
-            {
-                if (lastValue != -1 || d > -1)
-                {
-                    lastValue = d;
-                    _dataReceived.OnNext(d);
-                }
-                else
-                {
-                    lastValue = -1;
-                }
-            },
-            obs.OnError));
+    /// <summary>
+    /// Connects the specified hostname.
+    /// </summary>
+    /// <param name="hostname">The hostname.</param>
+    /// <param name="port">The port.</param>
+    public void Connect(string hostname, int port) =>
+        _tcpClient.Connect(hostname, port);
 
-        obs.OnNext(Unit.Default);
-        return Disposable.Create(() =>
-        {
-            dis.Dispose();
-        });
-    }).Publish().RefCount();
+    /// <summary>
+    /// Connects the specified address.
+    /// </summary>
+    /// <param name="address">The address.</param>
+    /// <param name="port">The port.</param>
+    public void Connect(IPAddress address, int port) =>
+        _tcpClient.Connect(address, port);
+
+    /// <summary>
+    /// Connects the specified remote ep.
+    /// </summary>
+    /// <param name="remoteEP">The remote ep.</param>
+    public void Connect(IPEndPoint remoteEP) =>
+        _tcpClient.Connect(remoteEP);
+
+    /// <summary>
+    /// Connects the specified ip addresses.
+    /// </summary>
+    /// <param name="ipAddresses">The ip addresses.</param>
+    /// <param name="port">The port.</param>
+    public void Connect(IPAddress[] ipAddresses, int port) =>
+        _tcpClient.Connect(ipAddresses, port);
 
     /// <summary>
     /// Opens this instance.
@@ -158,7 +161,7 @@ public class TcpClientRx : IPortRx
             _disposablePort = new();
         }
 
-        return _disposablePort?.Count == 0 ? Task.Run(() => Connect.Subscribe().AddTo(_disposablePort)) : Task.CompletedTask;
+        return _disposablePort?.Count == 0 ? Task.Run(() => Connect().Subscribe().AddTo(_disposablePort)) : Task.CompletedTask;
     }
 
     /// <summary>
@@ -232,4 +235,31 @@ public class TcpClientRx : IPortRx
             _disposedValue = true;
         }
     }
+
+    private IObservable<Unit> Connect() => Observable.Create<Unit>(obs =>
+    {
+        var dis = new CompositeDisposable();
+        var lastValue = -1;
+        dis.Add(Observable.While(() => true, Observable.Return(Stream.ReadByte())).Retry()
+        .Subscribe(
+            d =>
+            {
+                if (lastValue != -1 || d > -1)
+                {
+                    lastValue = d;
+                    _dataReceived.OnNext(d);
+                }
+                else
+                {
+                    lastValue = -1;
+                }
+            },
+            obs.OnError));
+
+        obs.OnNext(Unit.Default);
+        return Disposable.Create(() =>
+        {
+            dis.Dispose();
+        });
+    }).Publish().RefCount();
 }

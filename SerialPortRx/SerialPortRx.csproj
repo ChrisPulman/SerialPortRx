@@ -1,14 +1,22 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <ItemGroup>
-    <Compile Update="**\*.cs" DependentUpon="I%(Filename).cs" />
     <PackageReference Include="System.Reactive" Version="5.0.0" />
     <PackageReference Include="System.IO.Ports" Version="6.0.0" />
   </ItemGroup>
 
   <ItemGroup>
     <Compile Update="UdpClientRx.cs">
-      <DependentUpon>I%(Filename).cs</DependentUpon>
+      <DependentUpon>IPortRx.cs</DependentUpon>
+    </Compile>
+    <Compile Update="TcpClientRx.cs">
+      <DependentUpon>IPortRx.cs</DependentUpon>
+    </Compile>
+    <Compile Update="ISerialPortRx.cs">
+      <DependentUpon>IPortRx.cs</DependentUpon>
+    </Compile>
+    <Compile Update="SerialPortRx.cs">
+      <DependentUpon>ISerialPortRx.cs</DependentUpon>
     </Compile>
   </ItemGroup>
 
