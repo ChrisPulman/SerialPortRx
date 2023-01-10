@@ -4,6 +4,7 @@
     <OutputType>Exe</OutputType>
     <RootNamespace>CP.IO.Ports</RootNamespace>
     <GeneratePackageOnBuild>false</GeneratePackageOnBuild>
+    <IsPackable>false</IsPackable>
   </PropertyGroup>
 
   <ItemGroup>
