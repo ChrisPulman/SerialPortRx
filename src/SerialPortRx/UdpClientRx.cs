@@ -1,7 +1,5 @@
-﻿// <copyright file="UdpClientRx.cs" company="Chris Pulman">
-// Copyright (c) Chris Pulman. All rights reserved.
+﻿// Copyright (c) Chris Pulman. All rights reserved.
 // Licensed under the MIT license. See LICENSE file in the project root for full license information.
-// </copyright>
 
 using System;
 using System.Linq;
@@ -177,11 +175,13 @@ public class UdpClientRx : IPortRx
     /// <value>The data received.</value>
     public IObservable<int> BytesReceived => _bytesReceived.Retry().Publish().RefCount();
 
+#if HasWindows
     /// <summary>
     /// Allows the nat traversal.
     /// </summary>
     /// <param name="allowed">if set to <c>true</c> [allowed].</param>
     public void AllowNatTraversal(bool allowed) => _udpClient!.AllowNatTraversal(allowed);
+#endif
 
     /// <summary>
     /// Connects the specified hostname.
@@ -407,9 +407,6 @@ public class UdpClientRx : IPortRx
         };
 
         obs.OnNext(Unit.Default);
-        return Disposable.Create(() =>
-        {
-            dis.Dispose();
-        });
+        return Disposable.Create(() => dis.Dispose());
     }).Publish().RefCount();
 }
