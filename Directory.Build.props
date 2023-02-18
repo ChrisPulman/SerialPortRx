@@ -3,10 +3,11 @@
   <PropertyGroup>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <Authors>Chris Pulman</Authors>
-    <Description>A Reactive Property for use in cross platform applications based on ReactiveUI</Description>
+    <Description>A Reactive Serial Port for use in cross platform applications</Description>
     <Copyright>Copyright © https://github.com/ChrisPulman $([System.DateTime]::Now.ToString(yyyy))</Copyright>
     <IsTestProject>$(MSBuildProjectName.Contains('Tests'))</IsTestProject>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <PackageReadmeFile>readme.md</PackageReadmeFile>
     <LangVersion>preview</LangVersion>
     <Configuration>$(TargetFramework)</Configuration>
     <Company>ChrisPulman</Company>
@@ -15,7 +16,7 @@
     <PackageIcon>logo.png</PackageIcon>
     <Configurations>Debug;Release;PreRelease</Configurations>
     <PackageReleaseNotes>Compatability with Net 6, Net 7 and netstandard2.0</PackageReleaseNotes>
-    <PackageTags>SerialPort;reactiveui;rx;reactive;extensions;observable;LINQ;net;netstandard</PackageTags>
+    <PackageTags>SerialPort;rx;reactive;extensions;observable;LINQ;net;netstandard</PackageTags>
     <EnableNETAnalyzers>True</EnableNETAnalyzers>
     <AnalysisLevel>latest</AnalysisLevel>
 
@@ -44,6 +45,7 @@
   <ItemGroup>
     <None Include="$(MSBuildThisFileDirectory)images\logo.png" Pack="true" PackagePath="\"/>
     <None Include="$(MSBuildThisFileDirectory)LICENSE" Pack="true" PackagePath="LICENSE" />
+    <None Include="$(MSBuildThisFileDirectory)README.md" Pack="true" PackagePath="\"/>
   </ItemGroup>
   
   <ItemGroup Condition="'$(IsTestProject)' == 'true'">
