@@ -79,10 +79,7 @@ public static class SerialPortRxMixins
             }
         }).AddTo(dis);
 
-        if (scheduler == null)
-        {
-            scheduler = new EventLoopScheduler();
-        }
+        scheduler ??= new EventLoopScheduler();
 
         Observable.Interval(TimeSpan.FromMilliseconds(1), scheduler).Subscribe(_ =>
         {
@@ -145,10 +142,7 @@ public static class SerialPortRxMixins
                 }
             }).AddTo(dis);
 
-            if (scheduler == null)
-            {
-                scheduler = new EventLoopScheduler();
-            }
+            scheduler ??= new EventLoopScheduler();
 
             Observable.Interval(TimeSpan.FromMilliseconds(1), scheduler).Subscribe(_ =>
             {
@@ -186,9 +180,7 @@ public static class SerialPortRxMixins
     /// <param name="this">The this.</param>
     /// <returns>Observable value.</returns>
     public static IObservable<T> ForEach<T>(this IObservable<T[]> @this) =>
-                                        Observable.Create<T>(obs =>
-                                        {
-                                            return @this.Subscribe(
+                                        Observable.Create<T>(obs => @this.Subscribe(
                                                 list =>
                                                 {
                                                     foreach (var item in list)
@@ -200,8 +192,7 @@ public static class SerialPortRxMixins
                                                     }
                                                 },
                                                 obs.OnError,
-                                                obs.OnCompleted);
-                                        });
+                                                obs.OnCompleted));
 
     /// <summary>
     /// <para>Repeats the source observable sequence until it successfully terminates.</para>
@@ -275,28 +266,25 @@ where TException : Exception => source.OnErrorRetry(onError, retryCount, delay, 
     /// <returns>Observable value.</returns>
     public static IObservable<TSource> OnErrorRetry<TSource, TException>(
                     this IObservable<TSource> source, Action<TException> onError, int retryCount, TimeSpan delay, IScheduler delayScheduler)
-                    where TException : Exception
-    {
-        return Observable.Defer(() =>
-        {
-            var dueTime = (delay.Ticks < 0) ? TimeSpan.Zero : delay;
-            var empty = Observable.Empty<TSource>();
-            var count = 0;
+                    where TException : Exception => Observable.Defer(() =>
+                                                         {
+                                                             var dueTime = (delay.Ticks < 0) ? TimeSpan.Zero : delay;
+                                                             var empty = Observable.Empty<TSource>();
+                                                             var count = 0;
 
-            var self = default(IObservable<TSource>)!;
-            self = source.Catch((TException ex) =>
-            {
-                onError(ex);
-                return (++count < retryCount)
-                ? (dueTime == TimeSpan.Zero)
-                ? self.SubscribeOn(Scheduler.CurrentThread)
-                : empty.Delay(dueTime, delayScheduler).Concat(self).SubscribeOn(Scheduler.CurrentThread)
-                : Observable.Throw<TSource>(ex);
-            });
+                                                             var self = default(IObservable<TSource>)!;
+                                                             self = source.Catch((TException ex) =>
+                                                             {
+                                                                 onError(ex);
+                                                                 return (++count < retryCount)
+                                                                 ? (dueTime == TimeSpan.Zero)
+                                                                 ? self.SubscribeOn(Scheduler.CurrentThread)
+                                                                 : empty.Delay(dueTime, delayScheduler).Concat(self).SubscribeOn(Scheduler.CurrentThread)
+                                                                 : Observable.Throw<TSource>(ex);
+                                                             });
 
-            return self;
-        });
-    }
+                                                             return self;
+                                                         });
 
     /// <summary>
     /// Executes while port is open at the given TimeSpan.
