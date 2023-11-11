@@ -13,6 +13,7 @@ using System.Reactive.Subjects;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using ReactiveMarbles.Extensions;
 
 namespace CP.IO.Ports;
 
@@ -22,19 +23,20 @@ namespace CP.IO.Ports;
 /// <seealso cref="CP.IO.Ports.ISerialPortRx"/>
 public class SerialPortRx : ISerialPortRx
 {
-    private readonly ISubject<bool> _isOpenValue = new ReplaySubject<bool>(1);
-    private readonly ISubject<char> _dataReceived = new Subject<char>();
-    private readonly ISubject<Exception> _errors = new Subject<Exception>();
-    private readonly ISubject<(byte[] byteArray, int offset, int count)> _writeByte = new Subject<(byte[] byteArray, int offset, int count)>();
-    private readonly ISubject<(char[] charArray, int offset, int count)> _writeChar = new Subject<(char[] charArray, int offset, int count)>();
-    private readonly ISubject<string> _writeString = new Subject<string>();
-    private readonly ISubject<string> _writeStringLine = new Subject<string>();
-    private readonly ISubject<Unit> _discardInBuffer = new Subject<Unit>();
-    private readonly ISubject<Unit> _discardOutBuffer = new Subject<Unit>();
-    private readonly ISubject<(byte[] buffer, int offset, int count)> _readBytes = new Subject<(byte[] buffer, int offset, int count)>();
-    private readonly ISubject<int> _bytesRead = new Subject<int>();
-    private readonly ISubject<int> _bytesReceived = new Subject<int>();
-    private CompositeDisposable _disposablePort = new();
+    private static readonly string[] noPorts = ["NoPorts"];
+    private readonly ReplaySubject<bool> _isOpenValue = new(1);
+    private readonly Subject<char> _dataReceived = new();
+    private readonly Subject<Exception> _errors = new();
+    private readonly Subject<(byte[] byteArray, int offset, int count)> _writeByte = new();
+    private readonly Subject<(char[] charArray, int offset, int count)> _writeChar = new();
+    private readonly Subject<string> _writeString = new();
+    private readonly Subject<string> _writeStringLine = new();
+    private readonly Subject<Unit> _discardInBuffer = new();
+    private readonly Subject<Unit> _discardOutBuffer = new();
+    private readonly Subject<(byte[] buffer, int offset, int count)> _readBytes = new();
+    private readonly Subject<int> _bytesRead = new();
+    private readonly Subject<int> _bytesReceived = new();
+    private CompositeDisposable _disposablePort = [];
     private bool _readBusy;
 
     /// <summary>
@@ -454,7 +456,7 @@ public class SerialPortRx : ISerialPortRx
             var compareNew = SerialPort.GetPortNames();
             if (compareNew.Length == 0)
             {
-                compareNew = new string[] { "NoPorts" };
+                compareNew = noPorts;
             }
 
             if (compare == null)
@@ -516,10 +518,10 @@ public class SerialPortRx : ISerialPortRx
     {
         if (_disposablePort?.IsDisposed != false)
         {
-            _disposablePort = new();
+            _disposablePort = [];
         }
 
-        return _disposablePort?.Count == 0 ? Task.Run(() => Connect.Subscribe().AddTo(_disposablePort)) : Task.CompletedTask;
+        return _disposablePort?.Count == 0 ? Task.Run(() => Connect.Subscribe().DisposeWith(_disposablePort)) : Task.CompletedTask;
     }
 
     /// <summary>
@@ -544,10 +546,14 @@ public class SerialPortRx : ISerialPortRx
     /// <param name="byteArray">The byte array.</param>
     public void Write(byte[] byteArray)
     {
+#if NETSTANDARD
         if (byteArray == null)
         {
             throw new ArgumentNullException(nameof(byteArray));
         }
+#else
+        ArgumentNullException.ThrowIfNull(byteArray);
+#endif
 
         _writeByte?.OnNext((byteArray, 0, byteArray.Length));
     }
@@ -558,10 +564,14 @@ public class SerialPortRx : ISerialPortRx
     /// <param name="charArray">The character array.</param>
     public void Write(char[] charArray)
     {
+#if NETSTANDARD
         if (charArray == null)
         {
             throw new ArgumentNullException(nameof(charArray));
         }
+#else
+        ArgumentNullException.ThrowIfNull(charArray);
+#endif
 
         _writeChar?.OnNext((charArray, 0, charArray.Length));
     }
@@ -610,6 +620,18 @@ public class SerialPortRx : ISerialPortRx
         {
             if (disposing)
             {
+                _isOpenValue.Dispose();
+                _dataReceived.Dispose();
+                _errors.Dispose();
+                _writeByte.Dispose();
+                _writeChar.Dispose();
+                _writeString.Dispose();
+                _writeStringLine.Dispose();
+                _discardInBuffer.Dispose();
+                _discardOutBuffer.Dispose();
+                _readBytes.Dispose();
+                _bytesRead.Dispose();
+                _bytesReceived.Dispose();
                 _disposablePort?.Dispose();
             }
 

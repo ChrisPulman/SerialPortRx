@@ -12,6 +12,7 @@ using System.Reactive.Subjects;
 using System.Reactive.Threading.Tasks;
 using System.Threading;
 using System.Threading.Tasks;
+using ReactiveMarbles.Extensions;
 
 namespace CP.IO.Ports;
 
@@ -23,9 +24,9 @@ public class UdpClientRx : IPortRx
     private const int MaxBufferSize = ushort.MaxValue;
     private readonly UdpClient? _udpClient;
     private readonly byte[] _buffer = new byte[MaxBufferSize];
-    private readonly ISubject<int> _bytesReceived = new Subject<int>();
-    private readonly ISubject<int> _dataReceived = new Subject<int>();
-    private CompositeDisposable _disposablePort = new();
+    private readonly Subject<int> _bytesReceived = new();
+    private readonly Subject<int> _dataReceived = new();
+    private CompositeDisposable _disposablePort = [];
     private bool _disposedValue;
     private int _bufferOffset;
 
@@ -220,7 +221,7 @@ public class UdpClientRx : IPortRx
     {
         if (_disposablePort?.IsDisposed != false)
         {
-            _disposablePort = new();
+            _disposablePort = [];
         }
 
         return _disposablePort?.Count == 0 ? Task.Run(() => Connect().Subscribe().AddTo(_disposablePort)) : Task.CompletedTask;
@@ -239,10 +240,14 @@ public class UdpClientRx : IPortRx
     /// <param name="count">The count.</param>
     public void Write(byte[] buffer, int offset, int count)
     {
+#if NETSTANDARD
         if (buffer == null)
         {
             throw new ArgumentNullException(nameof(buffer));
         }
+#else
+        ArgumentNullException.ThrowIfNull(buffer);
+#endif
 
         if (offset < 0)
         {
@@ -294,10 +299,14 @@ public class UdpClientRx : IPortRx
     /// <returns>A int.</returns>
     public Task<int> ReadAsync(byte[] buffer, int offset, int count)
     {
+#if NETSTANDARD
         if (buffer == null)
         {
             throw new ArgumentNullException(nameof(buffer));
         }
+#else
+        ArgumentNullException.ThrowIfNull(buffer);
+#endif
 
         if (offset < 0)
         {
@@ -371,7 +380,6 @@ public class UdpClientRx : IPortRx
     /// </summary>
     public void Dispose()
     {
-        // Do not change this code. Put cleanup code in 'Dispose(bool disposing)' method
         Dispose(disposing: true);
         GC.SuppressFinalize(this);
     }
@@ -386,6 +394,8 @@ public class UdpClientRx : IPortRx
         {
             if (disposing)
             {
+                _bytesReceived.Dispose();
+                _dataReceived.Dispose();
                 _udpClient?.Dispose();
                 _disposablePort.Dispose();
             }

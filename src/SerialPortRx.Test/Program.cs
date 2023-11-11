@@ -5,6 +5,7 @@ using System;
 using System.Linq;
 using System.Reactive.Disposables;
 using System.Reactive.Linq;
+using ReactiveMarbles.Extensions;
 
 namespace CP.IO.Ports.Test;
 
@@ -32,17 +33,17 @@ internal static class Program
             {
                 // Create a port
                 var port = new SerialPortRx(comPortName, 9600);
-                port.AddTo(comdis);
+                port.DisposeWith(comdis);
 
                 // Subscribe to Exceptions from port
-                port.ErrorReceived.Subscribe(Console.WriteLine).AddTo(comdis);
-                port.IsOpenObservable.Subscribe(x => Console.WriteLine($"Port {comPortName} is {(x ? "Open" : "Closed")}")).AddTo(comdis);
+                port.ErrorReceived.Subscribe(Console.WriteLine).DisposeWith(comdis);
+                port.IsOpenObservable.Subscribe(x => Console.WriteLine($"Port {comPortName} is {(x ? "Open" : "Closed")}")).DisposeWith(comdis);
 
                 // Subscribe to the Data Received
-                port.DataReceived.BufferUntil(startChar, endChar, 100).Subscribe(data => Console.WriteLine(data)).AddTo(comdis);
+                port.DataReceived.BufferUntil(startChar, endChar, 100).Subscribe(data => Console.WriteLine(data)).DisposeWith(comdis);
 
                 // Subscribe to the Is Open @500ms intervals and write to com port
-                port.WhileIsOpen(TimeSpan.FromMilliseconds(500)).Subscribe(_ => port.Write(dataToWrite)).AddTo(comdis);
+                port.WhileIsOpen(TimeSpan.FromMilliseconds(500)).Subscribe(_ => port.Write(dataToWrite)).DisposeWith(comdis);
 
                 // Open the Com Port after subscriptions created
                 port.Open();
@@ -51,13 +52,13 @@ internal static class Program
             {
                 comdis?.Dispose();
                 Console.WriteLine($"Port {comPortName} Disposed");
-                comdis = new CompositeDisposable();
+                comdis = [];
             }
         }).ForEach().Subscribe(name =>
         {
             // Show available ports
             Console.WriteLine(name);
-        }).AddTo(dis);
+        }).DisposeWith(dis);
         Console.ReadLine();
 
         // Cleanup ports

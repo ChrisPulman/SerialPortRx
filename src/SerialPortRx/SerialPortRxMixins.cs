@@ -2,7 +2,6 @@
 // Licensed under the MIT license. See LICENSE file in the project root for full license information.
 
 using System;
-using System.Collections.Generic;
 using System.IO.Ports;
 using System.Reactive;
 using System.Reactive.Concurrency;
@@ -172,27 +171,6 @@ public static class SerialPortRxMixins
     /// <param name="this">The this.</param>
     /// <returns>Observable value.</returns>
     public static IObservable<EventPattern<SerialErrorReceivedEventArgs>> ErrorReceivedObserver(this SerialPort @this) => Observable.FromEventPattern<SerialErrorReceivedEventHandler, SerialErrorReceivedEventArgs>(h => @this.ErrorReceived += h, h => @this.ErrorReceived -= h);
-
-    /// <summary>
-    /// Fors the each.
-    /// </summary>
-    /// <typeparam name="T">The type.</typeparam>
-    /// <param name="this">The this.</param>
-    /// <returns>Observable value.</returns>
-    public static IObservable<T> ForEach<T>(this IObservable<T[]> @this) =>
-                                        Observable.Create<T>(obs => @this.Subscribe(
-                                                list =>
-                                                {
-                                                    foreach (var item in list)
-                                                    {
-                                                        if (!EqualityComparer<T>.Default.Equals(item, default!))
-                                                        {
-                                                            obs.OnNext(item);
-                                                        }
-                                                    }
-                                                },
-                                                obs.OnError,
-                                                obs.OnCompleted));
 
     /// <summary>
     /// <para>Repeats the source observable sequence until it successfully terminates.</para>
