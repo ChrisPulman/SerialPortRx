@@ -7,6 +7,7 @@ using System.Reactive;
 using System.Reactive.Concurrency;
 using System.Reactive.Disposables;
 using System.Reactive.Linq;
+using ReactiveMarbles.Extensions;
 
 namespace CP.IO.Ports;
 
@@ -59,9 +60,9 @@ public static class SerialPortRxMixins
         {
             startsWithL = sw;
             elapsedTime = 0;
-        }).AddTo(dis);
+        }).DisposeWith(dis);
         var endsWithL = ' ';
-        var ewd = endsWith.Subscribe(ew => endsWithL = ew).AddTo(dis);
+        var ewd = endsWith.Subscribe(ew => endsWithL = ew).DisposeWith(dis);
         var sub = @this.Subscribe(s =>
         {
             elapsedTime = 0;
@@ -76,7 +77,7 @@ public static class SerialPortRxMixins
                     str = string.Empty;
                 }
             }
-        }).AddTo(dis);
+        }).DisposeWith(dis);
 
         scheduler ??= new EventLoopScheduler();
 
@@ -89,7 +90,7 @@ public static class SerialPortRxMixins
                 str = string.Empty;
                 elapsedTime = 0;
             }
-        }).AddTo(dis);
+        }).DisposeWith(dis);
 
         return dis;
     });
@@ -120,11 +121,11 @@ public static class SerialPortRxMixins
             {
                 startsWithL = sw;
                 elapsedTime = 0;
-            }).AddTo(dis);
+            }).DisposeWith(dis);
             var endsWithL = ' ';
-            endsWith.Subscribe(ew => endsWithL = ew).AddTo(dis);
+            endsWith.Subscribe(ew => endsWithL = ew).DisposeWith(dis);
             var defaultValueL = string.Empty;
-            defaultValue.Subscribe(dv => defaultValueL = dv).AddTo(dis);
+            defaultValue.Subscribe(dv => defaultValueL = dv).DisposeWith(dis);
             @this.Subscribe(s =>
             {
                 elapsedTime = 0;
@@ -139,7 +140,7 @@ public static class SerialPortRxMixins
                         str = string.Empty;
                     }
                 }
-            }).AddTo(dis);
+            }).DisposeWith(dis);
 
             scheduler ??= new EventLoopScheduler();
 
@@ -153,7 +154,7 @@ public static class SerialPortRxMixins
                     str = string.Empty;
                     elapsedTime = 0;
                 }
-            }).AddTo(dis);
+            }).DisposeWith(dis);
 
             return dis;
         });

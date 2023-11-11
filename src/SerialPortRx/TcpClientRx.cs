@@ -10,6 +10,7 @@ using System.Reactive.Linq;
 using System.Reactive.Subjects;
 using System.Threading;
 using System.Threading.Tasks;
+using ReactiveMarbles.Extensions;
 
 namespace CP.IO.Ports;
 
@@ -159,7 +160,7 @@ public class TcpClientRx : IPortRx
             _disposablePort = [];
         }
 
-        return _disposablePort?.Count == 0 ? Task.Run(() => Connect().Subscribe().AddTo(_disposablePort)) : Task.CompletedTask;
+        return _disposablePort?.Count == 0 ? Task.Run(() => Connect().Subscribe().DisposeWith(_disposablePort)) : Task.CompletedTask;
     }
 
     /// <summary>

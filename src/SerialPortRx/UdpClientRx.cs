@@ -224,7 +224,7 @@ public class UdpClientRx : IPortRx
             _disposablePort = [];
         }
 
-        return _disposablePort?.Count == 0 ? Task.Run(() => Connect().Subscribe().AddTo(_disposablePort)) : Task.CompletedTask;
+        return _disposablePort?.Count == 0 ? Task.Run(() => Connect().Subscribe().DisposeWith(_disposablePort)) : Task.CompletedTask;
     }
 
     /// <summary>
