@@ -1,13 +1,13 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
-    <TargetFrameworks>netstandard2.0;net6.0;net7.0;net6.0-windows10.0.17763.0;net7.0-windows10.0.17763.0</TargetFrameworks>
+    <TargetFrameworks>netstandard2.0;net6.0;net7.0;net8.0;net6.0-windows10.0.19041.0;net7.0-windows10.0.19041.0;net8.0-windows10.0.19041.0</TargetFrameworks>
   </PropertyGroup>
-  <PropertyGroup Condition="'$(TargetFramework)'=='net6.0-windows10.0.17763.0' or '$(TargetFramework)'=='net7.0-windows10.0.17763.0'">
+  <PropertyGroup Condition="$(TargetFramework.EndsWith('-windows10.0.19041.0'))">
     <DefineConstants>HasWindows</DefineConstants>
   </PropertyGroup>
   <ItemGroup>
-    <PackageReference Include="System.Reactive" Version="6.0.0" />
-    <PackageReference Include="System.IO.Ports" Version="7.0.0" />
+    <PackageReference Include="ReactiveMarbles.Extensions" Version="1.1.7" />
+    <PackageReference Include="System.IO.Ports" Version="8.0.0-rc.2.23479.6" />
   </ItemGroup>
 
   <ItemGroup>

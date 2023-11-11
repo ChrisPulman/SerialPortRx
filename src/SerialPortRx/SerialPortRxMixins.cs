@@ -2,12 +2,12 @@
 // Licensed under the MIT license. See LICENSE file in the project root for full license information.
 
 using System;
-using System.Collections.Generic;
 using System.IO.Ports;
 using System.Reactive;
 using System.Reactive.Concurrency;
 using System.Reactive.Disposables;
 using System.Reactive.Linq;
+using ReactiveMarbles.Extensions;
 
 namespace CP.IO.Ports;
 
@@ -60,9 +60,9 @@ public static class SerialPortRxMixins
         {
             startsWithL = sw;
             elapsedTime = 0;
-        }).AddTo(dis);
+        }).DisposeWith(dis);
         var endsWithL = ' ';
-        var ewd = endsWith.Subscribe(ew => endsWithL = ew).AddTo(dis);
+        var ewd = endsWith.Subscribe(ew => endsWithL = ew).DisposeWith(dis);
         var sub = @this.Subscribe(s =>
         {
             elapsedTime = 0;
@@ -77,7 +77,7 @@ public static class SerialPortRxMixins
                     str = string.Empty;
                 }
             }
-        }).AddTo(dis);
+        }).DisposeWith(dis);
 
         scheduler ??= new EventLoopScheduler();
 
@@ -90,7 +90,7 @@ public static class SerialPortRxMixins
                 str = string.Empty;
                 elapsedTime = 0;
             }
-        }).AddTo(dis);
+        }).DisposeWith(dis);
 
         return dis;
     });
@@ -121,11 +121,11 @@ public static class SerialPortRxMixins
             {
                 startsWithL = sw;
                 elapsedTime = 0;
-            }).AddTo(dis);
+            }).DisposeWith(dis);
             var endsWithL = ' ';
-            endsWith.Subscribe(ew => endsWithL = ew).AddTo(dis);
+            endsWith.Subscribe(ew => endsWithL = ew).DisposeWith(dis);
             var defaultValueL = string.Empty;
-            defaultValue.Subscribe(dv => defaultValueL = dv).AddTo(dis);
+            defaultValue.Subscribe(dv => defaultValueL = dv).DisposeWith(dis);
             @this.Subscribe(s =>
             {
                 elapsedTime = 0;
@@ -140,7 +140,7 @@ public static class SerialPortRxMixins
                         str = string.Empty;
                     }
                 }
-            }).AddTo(dis);
+            }).DisposeWith(dis);
 
             scheduler ??= new EventLoopScheduler();
 
@@ -154,7 +154,7 @@ public static class SerialPortRxMixins
                     str = string.Empty;
                     elapsedTime = 0;
                 }
-            }).AddTo(dis);
+            }).DisposeWith(dis);
 
             return dis;
         });
@@ -172,27 +172,6 @@ public static class SerialPortRxMixins
     /// <param name="this">The this.</param>
     /// <returns>Observable value.</returns>
     public static IObservable<EventPattern<SerialErrorReceivedEventArgs>> ErrorReceivedObserver(this SerialPort @this) => Observable.FromEventPattern<SerialErrorReceivedEventHandler, SerialErrorReceivedEventArgs>(h => @this.ErrorReceived += h, h => @this.ErrorReceived -= h);
-
-    /// <summary>
-    /// Fors the each.
-    /// </summary>
-    /// <typeparam name="T">The type.</typeparam>
-    /// <param name="this">The this.</param>
-    /// <returns>Observable value.</returns>
-    public static IObservable<T> ForEach<T>(this IObservable<T[]> @this) =>
-                                        Observable.Create<T>(obs => @this.Subscribe(
-                                                list =>
-                                                {
-                                                    foreach (var item in list)
-                                                    {
-                                                        if (!EqualityComparer<T>.Default.Equals(item, default!))
-                                                        {
-                                                            obs.OnNext(item);
-                                                        }
-                                                    }
-                                                },
-                                                obs.OnError,
-                                                obs.OnCompleted));
 
     /// <summary>
     /// <para>Repeats the source observable sequence until it successfully terminates.</para>

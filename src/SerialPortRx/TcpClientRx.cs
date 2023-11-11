@@ -10,6 +10,7 @@ using System.Reactive.Linq;
 using System.Reactive.Subjects;
 using System.Threading;
 using System.Threading.Tasks;
+using ReactiveMarbles.Extensions;
 
 namespace CP.IO.Ports;
 
@@ -19,9 +20,9 @@ namespace CP.IO.Ports;
 public class TcpClientRx : IPortRx
 {
     private readonly TcpClient _tcpClient;
-    private readonly ISubject<int> _bytesReceived = new Subject<int>();
-    private readonly ISubject<int> _dataReceived = new Subject<int>();
-    private CompositeDisposable _disposablePort = new();
+    private readonly Subject<int> _bytesReceived = new();
+    private readonly Subject<int> _dataReceived = new();
+    private CompositeDisposable _disposablePort = [];
     private bool _disposedValue;
 
     /// <summary>
@@ -156,10 +157,10 @@ public class TcpClientRx : IPortRx
     {
         if (_disposablePort?.IsDisposed != false)
         {
-            _disposablePort = new();
+            _disposablePort = [];
         }
 
-        return _disposablePort?.Count == 0 ? Task.Run(() => Connect().Subscribe().AddTo(_disposablePort)) : Task.CompletedTask;
+        return _disposablePort?.Count == 0 ? Task.Run(() => Connect().Subscribe().DisposeWith(_disposablePort)) : Task.CompletedTask;
     }
 
     /// <summary>
@@ -211,7 +212,6 @@ public class TcpClientRx : IPortRx
     /// </summary>
     public void Dispose()
     {
-        // Do not change this code. Put cleanup code in 'Dispose(bool disposing)' method
         Dispose(disposing: true);
         GC.SuppressFinalize(this);
     }
@@ -226,6 +226,8 @@ public class TcpClientRx : IPortRx
         {
             if (disposing)
             {
+                _bytesReceived.Dispose();
+                _dataReceived.Dispose();
                 _tcpClient.Dispose();
                 _disposablePort.Dispose();
             }
@@ -255,9 +257,6 @@ public class TcpClientRx : IPortRx
             obs.OnError));
 
         obs.OnNext(Unit.Default);
-        return Disposable.Create(() =>
-        {
-            dis.Dispose();
-        });
+        return Disposable.Create(() => dis.Dispose());
     }).Publish().RefCount();
 }
