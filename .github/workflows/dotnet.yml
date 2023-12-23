@@ -8,6 +8,8 @@ jobs:
   build-and-release:
 
     runs-on: windows-2022
+    environment:
+      name: release
     outputs:
       nbgv: ${{ steps.nbgv.outputs.SemVer2 }}
     steps:
@@ -24,11 +26,6 @@ jobs:
             6.0.x
             7.0.x
             8.0.x
-
-    - name: Add MSBuild to PATH
-      uses: microsoft/setup-msbuild@v1.1.3
-      with:
-        vs-prerelease: true
 
     - name: NBGV
       id: nbgv
