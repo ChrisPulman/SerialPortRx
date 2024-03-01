@@ -6,7 +6,7 @@
     <DefineConstants>HasWindows</DefineConstants>
   </PropertyGroup>
   <ItemGroup>
-    <PackageReference Include="ReactiveMarbles.Extensions" Version="1.1.8" />
+    <PackageReference Include="ReactiveMarbles.Extensions" Version="1.1.13" />
     <PackageReference Include="System.IO.Ports" Version="8.0.0" />
   </ItemGroup>
 
