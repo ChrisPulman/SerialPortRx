@@ -7,7 +7,7 @@ on:
 jobs:
   ci-build-and-test:
 
-    runs-on: windows-2022
+    runs-on: windows-2025
     outputs:
       nbgv: ${{ steps.nbgv.outputs.SemVer2 }}
     steps:
