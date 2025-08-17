@@ -9,7 +9,6 @@ using System.Reactive;
 using System.Reactive.Disposables;
 using System.Reactive.Linq;
 using System.Reactive.Subjects;
-using System.Reactive.Threading.Tasks;
 using System.Threading;
 using System.Threading.Tasks;
 using ReactiveMarbles.Extensions;
@@ -26,6 +25,7 @@ public class UdpClientRx : IPortRx
     private readonly byte[] _buffer = new byte[MaxBufferSize];
     private readonly Subject<int> _bytesReceived = new();
     private readonly Subject<int> _dataReceived = new();
+    private readonly Subject<byte[]> _dataChunks = new();
     private CompositeDisposable _disposablePort = [];
     private bool _disposedValue;
     private int _bufferOffset;
@@ -171,6 +171,11 @@ public class UdpClientRx : IPortRx
     public IObservable<int> DataReceived => _dataReceived.Retry().Publish().RefCount();
 
     /// <summary>
+    /// Gets stream chunks (byte arrays) for each received UDP datagram.
+    /// </summary>
+    public IObservable<byte[]> DataReceivedBatches => _dataChunks.Retry().Publish().RefCount();
+
+    /// <summary>
     /// Gets the data received.
     /// </summary>
     /// <value>The data received.</value>
@@ -277,7 +282,8 @@ public class UdpClientRx : IPortRx
                 "Argument count cannot be greater than the length of buffer minus offset.");
         }
 
-        Client.Send(buffer.Skip(offset).Take(count).ToArray());
+        // Avoid allocations by sending directly from the buffer with offset
+        Client.Send(buffer, offset, count, SocketFlags.None);
     }
 
     /// <summary>
@@ -336,34 +342,32 @@ public class UdpClientRx : IPortRx
                 "Argument count cannot be greater than the length of buffer minus offset.");
         }
 
-        var ret = Task.Factory.StartNew(
+        // Use a background task to avoid blocking caller and keep compatibility with netstandard2.0
+        var ret = Task.Run(
             () =>
-             {
-                 if (_bufferOffset == 0)
-                 {
-                     _bufferOffset = Client.Receive(_buffer);
-                 }
+            {
+                if (_bufferOffset == 0)
+                {
+                    _bufferOffset = Client.Receive(_buffer);
+                }
 
-                 if (_bufferOffset < count)
-                 {
-                     throw new Exception("Not enough bytes in the bytes received.");
-                 }
+                if (_bufferOffset < count)
+                {
+                    throw new Exception("Not enough bytes in the bytes received.");
+                }
 
-                 Buffer.BlockCopy(_buffer, 0, buffer, offset, count);
-                 _bufferOffset -= count;
-                 Buffer.BlockCopy(_buffer, count, _buffer, 0, _bufferOffset);
+                Buffer.BlockCopy(_buffer, 0, buffer, offset, count);
+                _bufferOffset -= count;
+                Buffer.BlockCopy(_buffer, count, _buffer, 0, _bufferOffset);
 
-                 for (var i = 0; i < count; i++)
-                 {
-                     var item = buffer[i];
-                     _bytesReceived.OnNext(item);
-                 }
+                for (var i = 0; i < count; i++)
+                {
+                    var item = buffer[i];
+                    _bytesReceived.OnNext(item);
+                }
 
-                 return count;
-             },
-            CancellationToken.None,
-            TaskCreationOptions.None,
-            TaskScheduler.Current);
+                return count;
+            });
 
         return ret!;
     }
@@ -396,6 +400,7 @@ public class UdpClientRx : IPortRx
             {
                 _bytesReceived.Dispose();
                 _dataReceived.Dispose();
+                _dataChunks.Dispose();
                 _udpClient?.Dispose();
                 _disposablePort.Dispose();
             }
@@ -406,17 +411,80 @@ public class UdpClientRx : IPortRx
 
     private IObservable<Unit> Connect() => Observable.Create<Unit>(obs =>
     {
-        var dis = new CompositeDisposable
-        {
-            _udpClient!.ReceiveAsync()
-            .ToObservable()
-            .Select(x => x.Buffer)
-            .ForEach()
-            .Retry()
-            .Subscribe(d => _dataReceived.OnNext(d), obs.OnError)
-        };
+        var cts = new CancellationTokenSource();
+        var token = cts.Token;
 
-        obs.OnNext(Unit.Default);
-        return Disposable.Create(() => dis.Dispose());
+        // Dedicated loop to continuously receive datagrams and publish per-byte and as chunks
+        Task.Factory
+            .StartNew(
+                async () =>
+                {
+                    try
+                    {
+                        obs.OnNext(Unit.Default);
+
+                        while (!token.IsCancellationRequested)
+                        {
+                            UdpReceiveResult result;
+                            try
+                            {
+                                result = await _udpClient!.ReceiveAsync().ConfigureAwait(false);
+                            }
+                            catch (ObjectDisposedException)
+                            {
+                                break;
+                            }
+                            catch (SocketException)
+                            {
+                                // transient network error -> break and surface via retry upstream if used
+                                break;
+                            }
+
+                            var datagram = result.Buffer;
+
+                            // Per-byte stream
+                            for (var i = 0; i < datagram.Length; i++)
+                            {
+                                _dataReceived.OnNext(datagram[i]);
+                            }
+
+                            // Batched chunk stream (copy to separate array to keep immutability semantics)
+                            var chunk = datagram.ToArray();
+                            _dataChunks.OnNext(chunk);
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        obs.OnError(ex);
+                    }
+                },
+                token,
+                TaskCreationOptions.DenyChildAttach,
+                TaskScheduler.Default)
+            .Unwrap()
+            .ContinueWith(
+                t =>
+                {
+                    var ignored = t.Exception;
+                },
+                CancellationToken.None,
+                TaskContinuationOptions.OnlyOnFaulted,
+                TaskScheduler.Default);
+
+        return Disposable.Create(() =>
+        {
+            try
+            {
+                cts.Cancel();
+            }
+            catch
+            {
+                // ignore
+            }
+            finally
+            {
+                cts.Dispose();
+            }
+        });
     }).Publish().RefCount();
 }
