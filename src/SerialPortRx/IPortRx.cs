@@ -9,7 +9,7 @@ namespace CP.IO.Ports;
 /// <summary>
 /// IPortRx.
 /// </summary>
-/// <seealso cref="System.IDisposable" />
+/// <seealso cref="IDisposable" />
 public interface IPortRx : IDisposable
 {
     /// <summary>

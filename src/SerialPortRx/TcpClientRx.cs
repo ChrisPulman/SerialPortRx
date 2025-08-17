@@ -22,6 +22,7 @@ public class TcpClientRx : IPortRx
     private readonly TcpClient _tcpClient;
     private readonly Subject<int> _bytesReceived = new();
     private readonly Subject<int> _dataReceived = new();
+    private readonly Subject<byte[]> _dataChunks = new();
     private CompositeDisposable _disposablePort = [];
     private bool _disposedValue;
 
@@ -113,6 +114,11 @@ public class TcpClientRx : IPortRx
     public IObservable<int> DataReceived => _dataReceived.Retry().Publish().RefCount();
 
     /// <summary>
+    /// Gets stream chunks (byte arrays) produced by the internal read loop.
+    /// </summary>
+    public IObservable<byte[]> DataReceivedBatches => _dataChunks.Retry().Publish().RefCount();
+
+    /// <summary>
     /// Gets the data received From ReadAsync.
     /// </summary>
     /// <value>The data received.</value>
@@ -187,7 +193,7 @@ public class TcpClientRx : IPortRx
     public async Task<int> ReadAsync(byte[] buffer, int offset, int count)
     {
 #pragma warning disable CA1835 // Change the 'ReadAsync' method call to use the 'Stream.ReadAsync(Memory<byte>, CancellationToken)' overload.
-        var read = await Stream.ReadAsync(buffer, offset, count);
+        var read = await Stream.ReadAsync(buffer, offset, count).ConfigureAwait(false);
 #pragma warning restore CA1835 // Change the 'ReadAsync' method call to use the 'Stream.ReadAsync(Memory<byte>, CancellationToken)' overload.
         if (buffer?.Length > 0)
         {
@@ -228,6 +234,7 @@ public class TcpClientRx : IPortRx
             {
                 _bytesReceived.Dispose();
                 _dataReceived.Dispose();
+                _dataChunks.Dispose();
                 _tcpClient.Dispose();
                 _disposablePort.Dispose();
             }
@@ -238,25 +245,86 @@ public class TcpClientRx : IPortRx
 
     private IObservable<Unit> Connect() => Observable.Create<Unit>(obs =>
     {
-        var dis = new CompositeDisposable();
-        var lastValue = -1;
-        dis.Add(Observable.While(() => true, Observable.Return(Stream.ReadByte())).Retry()
-        .Subscribe(
-            d =>
-            {
-                if (lastValue != -1 || d > -1)
-                {
-                    lastValue = d;
-                    _dataReceived.OnNext(d);
-                }
-                else
-                {
-                    lastValue = -1;
-                }
-            },
-            obs.OnError));
+        var cts = new CancellationTokenSource();
+        var token = cts.Token;
 
-        obs.OnNext(Unit.Default);
-        return Disposable.Create(() => dis.Dispose());
+        // Start a dedicated async read loop to minimize per-byte overhead and avoid busy waits
+        Task.Factory
+            .StartNew(
+                async () =>
+                {
+                    try
+                    {
+                        // Signal subscription succeeded
+                        obs.OnNext(Unit.Default);
+
+                        var buffer = new byte[4096];
+                        while (!token.IsCancellationRequested)
+                        {
+                            int read;
+                            try
+                            {
+#if NETSTANDARD2_0
+                                read = await Stream.ReadAsync(buffer, 0, buffer.Length, token).ConfigureAwait(false);
+#else
+                                read = await Stream.ReadAsync(buffer.AsMemory(0, buffer.Length), token).ConfigureAwait(false);
+#endif
+                            }
+                            catch (OperationCanceledException)
+                            {
+                                break;
+                            }
+
+                            if (read == 0)
+                            {
+                                // Remote closed
+                                break;
+                            }
+
+                            // Per-byte stream
+                            for (var i = 0; i < read; i++)
+                            {
+                                _dataReceived.OnNext(buffer[i]);
+                            }
+
+                            // Batched chunk stream (copy to a right-sized array)
+                            var chunk = new byte[read];
+                            Buffer.BlockCopy(buffer, 0, chunk, 0, read);
+                            _dataChunks.OnNext(chunk);
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        obs.OnError(ex);
+                    }
+                },
+                token,
+                TaskCreationOptions.DenyChildAttach,
+                TaskScheduler.Default)
+            .Unwrap()
+            .ContinueWith(
+                t =>
+                {
+                    var ignored = t.Exception;
+                },
+                CancellationToken.None,
+                TaskContinuationOptions.OnlyOnFaulted,
+                TaskScheduler.Default);
+
+        return Disposable.Create(() =>
+        {
+            try
+            {
+                cts.Cancel();
+            }
+            catch
+            {
+                // ignore
+            }
+            finally
+            {
+                cts.Dispose();
+            }
+        });
     }).Publish().RefCount();
 }

@@ -20,7 +20,7 @@ namespace CP.IO.Ports;
 /// <summary>
 /// Serial Port Rx.
 /// </summary>
-/// <seealso cref="CP.IO.Ports.ISerialPortRx"/>
+/// <seealso cref="ISerialPortRx"/>
 public class SerialPortRx : ISerialPortRx
 {
     private static readonly string[] noPorts = ["NoPorts"];
@@ -36,8 +36,8 @@ public class SerialPortRx : ISerialPortRx
     private readonly Subject<(byte[] buffer, int offset, int count)> _readBytes = new();
     private readonly Subject<int> _bytesRead = new();
     private readonly Subject<int> _bytesReceived = new();
+    private readonly SemaphoreSlim _readLock = new(1, 1);
     private CompositeDisposable _disposablePort = [];
-    private bool _readBusy;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="SerialPortRx"/> class.
@@ -172,7 +172,7 @@ public class SerialPortRx : ISerialPortRx
     [Browsable(false)]
     [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
     [MonitoringDescription("Encoding")]
-    public Encoding Encoding { get; set; } = new ASCIIEncoding();
+    public Encoding Encoding { get; set; } = Encoding.ASCII;
 
     /// <summary>
     /// Gets the error received.
@@ -272,22 +272,23 @@ public class SerialPortRx : ISerialPortRx
         var dis = new CompositeDisposable();
 
         // Check that the port exists
-        if (!SerialPort.GetPortNames().Any(name => name.Equals(PortName)))
+        if (!SerialPort.GetPortNames().Any(name => name.Equals(PortName, StringComparison.OrdinalIgnoreCase)))
         {
             obs.OnError(new Exception($"Serial Port {PortName} does not exist"));
         }
         else
         {
             // Setup Com Port
-            var port = new SerialPort(PortName, BaudRate, Parity, DataBits, StopBits);
+            var port = new SerialPort(PortName, BaudRate, Parity, DataBits, StopBits)
+            {
+                NewLine = NewLine,
+                Handshake = Handshake,
+                ReadTimeout = ReadTimeout,
+                WriteTimeout = WriteTimeout,
+                Encoding = Encoding
+            };
 
             dis.Add(port);
-            port.Close();
-            port.NewLine = NewLine;
-            port.Handshake = Handshake;
-            port.ReadTimeout = ReadTimeout;
-            port.WriteTimeout = WriteTimeout;
-            port.Encoding = Encoding;
             try
             {
                 port.Open();
@@ -308,14 +309,14 @@ public class SerialPortRx : ISerialPortRx
                 port.DiscardOutBuffer();
             }
 
-            Thread.Sleep(100);
+            Thread.Sleep(50);
 
             // Subscribe to port errors
             dis.Add(port.ErrorReceivedObserver().Subscribe(e => obs.OnError(new Exception(e.EventArgs.EventType.ToString()))));
 
             // Get the stream of Char from the serial port
             var dataStream =
-                from dataRecieved in port.DataReceivedObserver()
+                from events in port.DataReceivedObserver()
                 from data in port.ReadExisting()
                 select data;
             dis.Add(dataStream.Subscribe(_dataReceived.OnNext, obs.OnError));
@@ -326,7 +327,7 @@ public class SerialPortRx : ISerialPortRx
                 {
                     try
                     {
-                        port?.Write(x);
+                        port.Write(x);
                     }
                     catch (Exception ex)
                     {
@@ -339,7 +340,7 @@ public class SerialPortRx : ISerialPortRx
                 {
                     try
                     {
-                        port?.WriteLine(x);
+                        port.WriteLine(x);
                     }
                     catch (Exception ex)
                     {
@@ -352,7 +353,7 @@ public class SerialPortRx : ISerialPortRx
                 {
                     try
                     {
-                        port?.Write(x.byteArray, x.offset, x.count);
+                        port.Write(x.byteArray, x.offset, x.count);
                     }
                     catch (Exception ex)
                     {
@@ -365,7 +366,7 @@ public class SerialPortRx : ISerialPortRx
                 {
                     try
                     {
-                        port?.Write(x.charArray, x.offset, x.count);
+                        port.Write(x.charArray, x.offset, x.count);
                     }
                     catch (Exception ex)
                     {
@@ -378,7 +379,7 @@ public class SerialPortRx : ISerialPortRx
                 {
                     try
                     {
-                        port?.DiscardInBuffer();
+                        port.DiscardInBuffer();
                     }
                     catch (Exception ex)
                     {
@@ -391,7 +392,7 @@ public class SerialPortRx : ISerialPortRx
                 {
                     try
                     {
-                        port?.DiscardOutBuffer();
+                        port.DiscardOutBuffer();
                     }
                     catch (Exception ex)
                     {
@@ -404,21 +405,18 @@ public class SerialPortRx : ISerialPortRx
                 {
                     try
                     {
-                        while (_readBusy)
-                        {
-                            await Task.Delay(1);
-                        }
+                        await _readLock.WaitAsync().ConfigureAwait(false);
 
-                        _readBusy = true;
-                        await Task.Delay(1);
-                        var br = port?.Read(x.buffer, x.offset, x.count);
-                        for (var i = 0; i < br!.Value; i++)
+                        // Yield to avoid blocking the OnNext caller's thread
+                        await Task.Yield();
+                        var br = await Task.Run(() => port.Read(x.buffer, x.offset, x.count)).ConfigureAwait(false);
+                        for (var i = 0; i < br; i++)
                         {
                             var item = x.buffer[i];
                             _bytesReceived.OnNext(item);
                         }
 
-                        _bytesRead.OnNext(br!.Value);
+                        _bytesRead.OnNext(br);
                     }
                     catch (Exception ex)
                     {
@@ -426,7 +424,7 @@ public class SerialPortRx : ISerialPortRx
                     }
                     finally
                     {
-                        _readBusy = false;
+                        _readLock.Release();
                     }
                 },
                 obs.OnError));
@@ -451,7 +449,7 @@ public class SerialPortRx : ISerialPortRx
     {
         string[]? compare = null;
         var numberOfPolls = 0;
-        return Observable.Interval(TimeSpan.FromMilliseconds(pollInterval)).Subscribe(_ =>
+        var subscription = Observable.Interval(TimeSpan.FromMilliseconds(pollInterval)).Subscribe(_ =>
         {
             var compareNew = SerialPort.GetPortNames();
             if (compareNew.Length == 0)
@@ -465,22 +463,22 @@ public class SerialPortRx : ISerialPortRx
                 obs.OnNext(compareNew);
             }
 
-            if (string.Concat(compare) != string.Concat(compareNew))
+            if (!string.Concat(compare).Equals(string.Concat(compareNew), StringComparison.Ordinal))
             {
                 obs.OnNext(compareNew);
                 compare = compareNew;
             }
 
-            if (numberOfPolls > pollLimit)
-            {
-                obs.OnCompleted();
-            }
-
-            if (pollLimit > 0 && numberOfPolls < pollLimit)
+            if (pollLimit > 0)
             {
                 numberOfPolls++;
+                if (numberOfPolls >= pollLimit)
+                {
+                    obs.OnCompleted();
+                }
             }
         });
+        return Disposable.Create(() => subscription.Dispose());
     }).Retry().Publish().RefCount();
 
     /// <summary>
@@ -633,6 +631,7 @@ public class SerialPortRx : ISerialPortRx
                 _bytesRead.Dispose();
                 _bytesReceived.Dispose();
                 _disposablePort?.Dispose();
+                _readLock.Dispose();
             }
 
             IsDisposed = true;
