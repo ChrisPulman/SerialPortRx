@@ -2,7 +2,9 @@
 A Reactive Serial Port Library
  This serial port is configured to provide a stream of data Read and accept a stream of Write requests
 
-[![SerialPortRx CI-Build](https://github.com/ChrisPulman/SerialPortRx/actions/workflows/dotnet.yml/badge.svg)](https://github.com/ChrisPulman/SerialPortRx/actions/workflows/dotnet.yml) ![Nuget](https://img.shields.io/nuget/v/SerialPortRx) ![Nuget](https://img.shields.io/nuget/dt/SerialPortRx)
+[![SerialPortRx CI-Build](https://github.com/ChrisPulman/SerialPortRx/actions/workflows/dotnet.yml/badge.svg)](https://github.com/ChrisPulman/SerialPortRx/actions/workflows/dotnet.yml)
+![Nuget](https://img.shields.io/nuget/dt/SerialPortRx)
+[![NuGet Stats](https://img.shields.io/nuget/v/SerialPortRx.svg)](https://www.nuget.org/packages/SerialPortRx)
 
 ## An Example of the usage of SerialPortRx
 ```csharp
