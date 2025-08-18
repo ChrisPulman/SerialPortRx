@@ -39,6 +39,9 @@ public class SerialPortRx : ISerialPortRx
     private readonly SemaphoreSlim _readLock = new(1, 1);
     private CompositeDisposable _disposablePort = [];
 
+    // Lazily-created line observable for continuous line parsing
+    private IObservable<string>? _lines;
+
     /// <summary>
     /// Initializes a new instance of the <see cref="SerialPortRx"/> class.
     /// </summary>
@@ -266,6 +269,58 @@ public class SerialPortRx : ISerialPortRx
     [DefaultValue("\n")]
     [MonitoringDescription("NewLine")]
     public string NewLine { get; set; } = "\n";
+
+    /// <summary>
+    /// Gets a lazily-created observable sequence of complete lines split by the NewLine sequence.
+    /// </summary>
+    public IObservable<string> Lines => _lines ??= Observable.Defer(() =>
+        Observable.Create<string>(obs =>
+        {
+            var sb = new StringBuilder();
+            var newLineLocal = NewLine ?? "\n";
+
+            var sub = DataReceived.Subscribe(
+                ch =>
+                {
+                    sb.Append(ch);
+                    if (newLineLocal.Length == 1)
+                    {
+                        if (ch == newLineLocal[0])
+                        {
+                            sb.Length--;
+                            var line = sb.ToString();
+                            sb.Clear();
+                            obs.OnNext(line);
+                        }
+                    }
+                    else if (sb.Length >= newLineLocal.Length)
+                    {
+                        var start = sb.Length - newLineLocal.Length;
+                        var isMatch = true;
+                        for (var i = 0; i < newLineLocal.Length; i++)
+                        {
+                            if (sb[start + i] != newLineLocal[i])
+                            {
+                                isMatch = false;
+                                break;
+                            }
+                        }
+
+                        if (isMatch)
+                        {
+                            sb.Length -= newLineLocal.Length;
+                            var line = sb.ToString();
+                            sb.Clear();
+                            obs.OnNext(line);
+                        }
+                    }
+                },
+                obs.OnError);
+
+            return sub;
+        })
+        .Publish()
+        .RefCount());
 
     private IObservable<Unit> Connect => Observable.Create<Unit>(obs =>
     {
@@ -603,6 +658,98 @@ public class SerialPortRx : ISerialPortRx
     {
         _readBytes.OnNext((buffer, offset, count));
         return await _bytesRead;
+    }
+
+    /// <summary>
+    /// Reads the line asynchronous.
+    /// </summary>
+    /// <exception cref="InvalidOperationException">Serial port is not open.</exception>
+    /// <returns>A <see cref="Task"/> representing the asynchronous operation.</returns>
+    public Task<string> ReadLineAsync() => ReadLineAsync(CancellationToken.None);
+
+    /// <summary>
+    /// Reads the line asynchronous with cancellation and respecting ReadTimeout (> 0) as a timeout.
+    /// </summary>
+    /// <param name="cancellationToken">Cancellation token to cancel waiting.</param>
+    /// <returns>A Task of string.</returns>
+    public async Task<string> ReadLineAsync(CancellationToken cancellationToken)
+    {
+        if (!IsOpen)
+        {
+            throw new InvalidOperationException("Serial port is not open.");
+        }
+
+        var tcs = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var sb = new StringBuilder();
+        var newLineLocal = NewLine ?? "\n";
+
+        var subscription = DataReceived.Subscribe(
+            ch =>
+            {
+                sb.Append(ch);
+                if (newLineLocal.Length == 1)
+                {
+                    if (ch == newLineLocal[0])
+                    {
+                        sb.Length--;
+                        tcs.TrySetResult(sb.ToString());
+                    }
+                }
+                else if (sb.Length >= newLineLocal.Length)
+                {
+                    var start = sb.Length - newLineLocal.Length;
+                    var isMatch = true;
+                    for (var i = 0; i < newLineLocal.Length; i++)
+                    {
+                        if (sb[start + i] != newLineLocal[i])
+                        {
+                            isMatch = false;
+                            break;
+                        }
+                    }
+
+                    if (isMatch)
+                    {
+                        sb.Length -= newLineLocal.Length;
+                        tcs.TrySetResult(sb.ToString());
+                    }
+                }
+            },
+            ex => tcs.TrySetException(ex));
+
+        CancellationTokenSource? timeoutCts = null;
+        var token = cancellationToken;
+        if (ReadTimeout > 0)
+        {
+            timeoutCts = new CancellationTokenSource(ReadTimeout);
+            token = cancellationToken.CanBeCanceled
+                ? CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeoutCts.Token).Token
+                : timeoutCts.Token;
+        }
+
+        using (token.Register(() =>
+        {
+            if (timeoutCts != null && timeoutCts.IsCancellationRequested && ReadTimeout > 0)
+            {
+                tcs.TrySetException(new TimeoutException("ReadLineAsync timed out."));
+            }
+            else
+            {
+                tcs.TrySetCanceled(token);
+            }
+        }))
+        {
+            try
+            {
+                var result = await tcs.Task.ConfigureAwait(false);
+                return result;
+            }
+            finally
+            {
+                subscription.Dispose();
+                timeoutCts?.Dispose();
+            }
+        }
     }
 
     /// <summary>

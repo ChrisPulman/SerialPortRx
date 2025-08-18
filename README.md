@@ -10,9 +10,13 @@ A Reactive Serial, TCP, and UDP I/O library that exposes incoming data as IObser
 - UdpClientRx and TcpClientRx: Reactive wrappers exposing a common IPortRx interface
 - Observables:
   - DataReceived: IObservable<char> for serial text flow
+  - Lines: IObservable<string> of complete lines split by NewLine
   - BytesReceived: IObservable<int> for byte stream emitted when using ReadAsync
   - IsOpenObservable: IObservable<bool> for connection state
   - ErrorReceived: IObservable<Exception> for errors
+- TCP/UDP batched reads:
+  - TcpClientRx.DataReceivedBatches: IObservable<byte[]> chunks per read loop
+  - UdpClientRx.DataReceivedBatches: IObservable<byte[]> per received datagram
 - Helpers:
   - PortNames(): reactive port enumeration with change notifications
   - BufferUntil(): message framing between start and end delimiters with timeout
@@ -131,6 +135,28 @@ Notes:
 - BytesReceived emits bytes read by your ReadAsync calls (not from ReadExisting()).
 - Concurrent ReadAsync calls are serialized internally for safety.
 
+## Reading lines
+Use ReadLineAsync to await a single complete line split by the configured NewLine. Supports single- and multi-character newline sequences and respects ReadTimeout (> 0).
+
+```csharp
+port.NewLine = "\r\n"; // optional: default is "\n"
+var line = await port.ReadLineAsync();
+Console.WriteLine($"Line: {line}");
+```
+
+You can also pass a CancellationToken:
+```csharp
+using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+var line = await port.ReadLineAsync(cts.Token);
+```
+
+## Line streaming with Lines
+Subscribe to Lines to get a continuous stream of complete lines:
+```csharp
+port.NewLine = "\n";
+port.Lines.Subscribe(line => Console.WriteLine($"LINE: {line}"));
+```
+
 ## Writing
 - port.Write(string text)
 - port.WriteLine(string text)
@@ -167,6 +193,18 @@ var n = await udp.ReadAsync(buf, 0, buf.Length);
 Console.WriteLine($"UDP read {n} bytes");
 ```
 
+### Batched receive (TCP/UDP)
+Subscribe to batched byte arrays for throughput-sensitive pipelines:
+```csharp
+// TCP batched chunks per read loop
+new TcpClientRx("example.com", 80).DataReceivedBatches
+    .Subscribe(chunk => Console.WriteLine($"TCP chunk size: {chunk.Length}"));
+
+// UDP per-datagram batches
+new UdpClientRx(12345).DataReceivedBatches
+    .Subscribe(datagram => Console.WriteLine($"UDP datagram size: {datagram.Length}"));
+```
+
 ## Threading and scheduling
 - The DataReceived and other streams run on the underlying event threads. Use ObserveOn to marshal to a UI or a dedicated scheduler when needed.
 - ReadAsync uses a lightweight lock and offloads blocking reads, avoiding CPU spin.
@@ -175,6 +213,7 @@ Console.WriteLine($"UDP read {n} bytes");
 - Subscribe before calling Open() to ensure you don’t miss events.
 - Tune Encoding (default ASCII), BaudRate, Parity, StopBits, and Handshake to match your device.
 - Use BufferUntil for delimited protocols. For binary protocols, use ReadAsync with fixed sizes.
+- Use Lines when dealing with text protocols; use ReadLineAsync when you need a one-shot line.
 - Always dispose subscriptions (DisposeWith) and call Close() when done.
 
 ## Example program (complete)
