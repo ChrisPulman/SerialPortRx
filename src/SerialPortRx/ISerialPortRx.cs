@@ -3,6 +3,8 @@
 
 using System;
 using System.IO.Ports;
+using System.Threading;
+using System.Threading.Tasks;
 
 namespace CP.IO.Ports;
 
@@ -123,4 +125,17 @@ public interface ISerialPortRx : IPortRx
     /// </summary>
     /// <param name="text">The text.</param>
     void WriteLine(string text);
+
+    /// <summary>
+    /// Reads the line asynchronous.
+    /// </summary>
+    /// <returns>A Task of string.</returns>
+    Task<string> ReadLineAsync();
+
+    /// <summary>
+    /// Reads the line asynchronous with cancellation and respecting ReadTimeout (> 0) as a timeout.
+    /// </summary>
+    /// <param name="cancellationToken">Cancellation token to cancel waiting.</param>
+    /// <returns>A Task of string.</returns>
+    Task<string> ReadLineAsync(CancellationToken cancellationToken);
 }
