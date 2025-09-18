@@ -13,7 +13,7 @@ using System.Reactive.Subjects;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
-using ReactiveMarbles.Extensions;
+using ReactiveUI.Extensions;
 
 namespace CP.IO.Ports;
 
@@ -729,7 +729,7 @@ public class SerialPortRx : ISerialPortRx
 
         using (token.Register(() =>
         {
-            if (timeoutCts != null && timeoutCts.IsCancellationRequested && ReadTimeout > 0)
+            if (timeoutCts?.IsCancellationRequested == true && ReadTimeout > 0)
             {
                 tcs.TrySetException(new TimeoutException("ReadLineAsync timed out."));
             }
