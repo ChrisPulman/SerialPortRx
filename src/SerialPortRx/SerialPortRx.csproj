@@ -6,15 +6,20 @@
   <PropertyGroup Condition="$(TargetFramework.EndsWith('-windows10.0.19041.0'))">
     <DefineConstants>HasWindows</DefineConstants>
   </PropertyGroup>
+  
   <ItemGroup>
-    <PackageReference Include="PolySharp" Version="1.15.0">
-      <PrivateAssets>all</PrivateAssets>
-      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
-    </PackageReference>
     <PackageReference Include="ReactiveUI.Extensions" Version="2.0.1" />
     <PackageReference Include="System.IO.Ports" Version="10.0.0-rc.1.25451.107" />
     <!-- Explicitly reference the core Rx package for reliability across TFMs -->
     <PackageReference Include="System.Reactive" Version="6.0.2" />
+  </ItemGroup>
+  
+  <ItemGroup Condition="$(TargetFramework.EndsWith('netstandard2.0'))">
+    <PackageReference Include="PolySharp" Version="1.15.0">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+    <PackageReference Include="System.Memory" Version="4.6.3" />
   </ItemGroup>
 
   <ItemGroup>

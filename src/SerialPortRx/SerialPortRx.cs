@@ -283,39 +283,6 @@ public class SerialPortRx : ISerialPortRx
                 ch =>
                 {
                     sb.Append(ch);
-#if NETSTANDARD
-                    if (newLineLocal.Length == 1)
-                    {
-                        if (ch == newLineLocal[0])
-                        {
-                            sb.Length--;
-                            var line = sb.ToString();
-                            sb.Clear();
-                            obs.OnNext(line);
-                        }
-                    }
-                    else if (sb.Length >= newLineLocal.Length)
-                    {
-                        var start = sb.Length - newLineLocal.Length;
-                        var isMatch = true;
-                        for (var i = 0; i < newLineLocal.Length; i++)
-                        {
-                            if (sb[start + i] != newLineLocal[i])
-                            {
-                                isMatch = false;
-                                break;
-                            }
-                        }
-
-                        if (isMatch)
-                        {
-                            sb.Length -= newLineLocal.Length;
-                            var line = sb.ToString();
-                            sb.Clear();
-                            obs.OnNext(line);
-                        }
-                    }
-#else
                     if (newLineLocal.Length == 1)
                     {
                         if (ch == newLineLocal[0])
@@ -329,22 +296,49 @@ public class SerialPortRx : ISerialPortRx
                     else if (sb.Length >= newLineLocal.Length)
                     {
                         var n = newLineLocal.Length;
-                        var tail = n <= 256 ? stackalloc char[n] : new char[n];
-                        var start = sb.Length - n;
-                        for (var i = 0; i < n; i++)
+                        if (n <= 256)
                         {
-                            tail[i] = sb[start + i];
-                        }
+                            Span<char> tail = stackalloc char[n];
+                            var start = sb.Length - n;
+                            for (var i = 0; i < n; i++)
+                            {
+                                tail[i] = sb[start + i];
+                            }
 
-                        if (tail.SequenceEqual(newLineLocal.AsSpan()))
+                            if (tail.SequenceEqual(newLineLocal.AsSpan()))
+                            {
+                                sb.Length -= n;
+                                var line = sb.ToString();
+                                sb.Clear();
+                                obs.OnNext(line);
+                            }
+                        }
+                        else
                         {
-                            sb.Length -= n;
-                            var line = sb.ToString();
-                            sb.Clear();
-                            obs.OnNext(line);
+                            var buffer = System.Buffers.ArrayPool<char>.Shared.Rent(n);
+                            try
+                            {
+                                var tail = buffer.AsSpan(0, n);
+                                var start = sb.Length - n;
+                                for (var i = 0; i < n; i++)
+                                {
+                                    tail[i] = sb[start + i];
+                                }
+
+                                if (tail.SequenceEqual(newLineLocal.AsSpan()))
+                                {
+                                    sb.Length -= n;
+                                    var line = sb.ToString();
+                                    sb.Clear();
+                                    obs.OnNext(line);
+                                }
+                            }
+                            finally
+                            {
+                                System.Buffers.ArrayPool<char>.Shared.Return(buffer);
+                            }
                         }
                     }
-#endif
                 },
                 obs.OnError);
 
@@ -718,35 +712,6 @@ public class SerialPortRx : ISerialPortRx
             ch =>
             {
                 sb.Append(ch);
-#if NETSTANDARD
-                if (newLineLocal.Length == 1)
-                {
-                    if (ch == newLineLocal[0])
-                    {
-                        sb.Length--;
-                        tcs.TrySetResult(sb.ToString());
-                    }
-                }
-                else if (sb.Length >= newLineLocal.Length)
-                {
-                    var start = sb.Length - newLineLocal.Length;
-                    var isMatch = true;
-                    for (var i = 0; i < newLineLocal.Length; i++)
-                    {
-                        if (sb[start + i] != newLineLocal[i])
-                        {
-                            isMatch = false;
-                            break;
-                        }
-                    }
-
-                    if (isMatch)
-                    {
-                        sb.Length -= newLineLocal.Length;
-                        tcs.TrySetResult(sb.ToString());
-                    }
-                }
-#else
                 if (newLineLocal.Length == 1)
                 {
                     if (ch == newLineLocal[0])
@@ -758,20 +723,45 @@ public class SerialPortRx : ISerialPortRx
                 else if (sb.Length >= newLineLocal.Length)
                 {
                     var n = newLineLocal.Length;
-                    var tail = n <= 256 ? stackalloc char[n] : new char[n];
-                    var start = sb.Length - n;
-                    for (var i = 0; i < n; i++)
+                    if (n <= 256)
                     {
-                        tail[i] = sb[start + i];
-                    }
+                        Span<char> tail = stackalloc char[n];
+                        var start = sb.Length - n;
+                        for (var i = 0; i < n; i++)
+                        {
+                            tail[i] = sb[start + i];
+                        }
 
-                    if (tail.SequenceEqual(newLineLocal.AsSpan()))
+                        if (tail.SequenceEqual(newLineLocal.AsSpan()))
+                        {
+                            sb.Length -= n;
+                            tcs.TrySetResult(sb.ToString());
+                        }
+                    }
+                    else
                     {
-                        sb.Length -= n;
-                        tcs.TrySetResult(sb.ToString());
+                        var buffer = System.Buffers.ArrayPool<char>.Shared.Rent(n);
+                        try
+                        {
+                            var tail = buffer.AsSpan(0, n);
+                            var start = sb.Length - n;
+                            for (var i = 0; i < n; i++)
+                            {
+                                tail[i] = sb[start + i];
+                            }
+
+                            if (tail.SequenceEqual(newLineLocal.AsSpan()))
+                            {
+                                sb.Length -= n;
+                                tcs.TrySetResult(sb.ToString());
+                            }
+                        }
+                        finally
+                        {
+                            System.Buffers.ArrayPool<char>.Shared.Return(buffer);
+                        }
                     }
                 }
-#endif
             },
             ex => tcs.TrySetException(ex));
 
