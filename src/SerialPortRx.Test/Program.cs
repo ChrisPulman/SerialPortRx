@@ -5,7 +5,7 @@ using System;
 using System.Linq;
 using System.Reactive.Disposables;
 using System.Reactive.Linq;
-using ReactiveMarbles.Extensions;
+using ReactiveUI.Extensions;
 
 namespace CP.IO.Ports.Test;
 

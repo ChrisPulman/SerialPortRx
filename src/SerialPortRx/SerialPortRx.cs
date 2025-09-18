@@ -283,6 +283,7 @@ public class SerialPortRx : ISerialPortRx
                 ch =>
                 {
                     sb.Append(ch);
+#if NETSTANDARD
                     if (newLineLocal.Length == 1)
                     {
                         if (ch == newLineLocal[0])
@@ -314,6 +315,36 @@ public class SerialPortRx : ISerialPortRx
                             obs.OnNext(line);
                         }
                     }
+#else
+                    if (newLineLocal.Length == 1)
+                    {
+                        if (ch == newLineLocal[0])
+                        {
+                            sb.Length--;
+                            var line = sb.ToString();
+                            sb.Clear();
+                            obs.OnNext(line);
+                        }
+                    }
+                    else if (sb.Length >= newLineLocal.Length)
+                    {
+                        var n = newLineLocal.Length;
+                        var tail = n <= 256 ? stackalloc char[n] : new char[n];
+                        var start = sb.Length - n;
+                        for (var i = 0; i < n; i++)
+                        {
+                            tail[i] = sb[start + i];
+                        }
+
+                        if (tail.SequenceEqual(newLineLocal.AsSpan()))
+                        {
+                            sb.Length -= n;
+                            var line = sb.ToString();
+                            sb.Clear();
+                            obs.OnNext(line);
+                        }
+                    }
+#endif
                 },
                 obs.OnError);
 
@@ -467,7 +498,7 @@ public class SerialPortRx : ISerialPortRx
                         var br = await Task.Run(() => port.Read(x.buffer, x.offset, x.count)).ConfigureAwait(false);
                         for (var i = 0; i < br; i++)
                         {
-                            var item = x.buffer[i];
+                            var item = x.buffer[x.offset + i];
                             _bytesReceived.OnNext(item);
                         }
 
@@ -518,7 +549,7 @@ public class SerialPortRx : ISerialPortRx
                 obs.OnNext(compareNew);
             }
 
-            if (!string.Concat(compare).Equals(string.Concat(compareNew), StringComparison.Ordinal))
+            if (compare?.SequenceEqual(compareNew) == false)
             {
                 obs.OnNext(compareNew);
                 compare = compareNew;
@@ -687,6 +718,7 @@ public class SerialPortRx : ISerialPortRx
             ch =>
             {
                 sb.Append(ch);
+#if NETSTANDARD
                 if (newLineLocal.Length == 1)
                 {
                     if (ch == newLineLocal[0])
@@ -714,6 +746,32 @@ public class SerialPortRx : ISerialPortRx
                         tcs.TrySetResult(sb.ToString());
                     }
                 }
+#else
+                if (newLineLocal.Length == 1)
+                {
+                    if (ch == newLineLocal[0])
+                    {
+                        sb.Length--;
+                        tcs.TrySetResult(sb.ToString());
+                    }
+                }
+                else if (sb.Length >= newLineLocal.Length)
+                {
+                    var n = newLineLocal.Length;
+                    var tail = n <= 256 ? stackalloc char[n] : new char[n];
+                    var start = sb.Length - n;
+                    for (var i = 0; i < n; i++)
+                    {
+                        tail[i] = sb[start + i];
+                    }
+
+                    if (tail.SequenceEqual(newLineLocal.AsSpan()))
+                    {
+                        sb.Length -= n;
+                        tcs.TrySetResult(sb.ToString());
+                    }
+                }
+#endif
             },
             ex => tcs.TrySetException(ex));
 
@@ -741,8 +799,7 @@ public class SerialPortRx : ISerialPortRx
         {
             try
             {
-                var result = await tcs.Task.ConfigureAwait(false);
-                return result;
+                return await tcs.Task.ConfigureAwait(false);
             }
             finally
             {
