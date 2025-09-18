@@ -13,7 +13,7 @@ using System.Reactive.Subjects;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
-using ReactiveMarbles.Extensions;
+using ReactiveUI.Extensions;
 
 namespace CP.IO.Ports;
 
@@ -295,23 +295,48 @@ public class SerialPortRx : ISerialPortRx
                     }
                     else if (sb.Length >= newLineLocal.Length)
                     {
-                        var start = sb.Length - newLineLocal.Length;
-                        var isMatch = true;
-                        for (var i = 0; i < newLineLocal.Length; i++)
+                        var n = newLineLocal.Length;
+                        if (n <= 256)
                         {
-                            if (sb[start + i] != newLineLocal[i])
+                            Span<char> tail = stackalloc char[n];
+                            var start = sb.Length - n;
+                            for (var i = 0; i < n; i++)
                             {
-                                isMatch = false;
-                                break;
+                                tail[i] = sb[start + i];
+                            }
+
+                            if (tail.SequenceEqual(newLineLocal.AsSpan()))
+                            {
+                                sb.Length -= n;
+                                var line = sb.ToString();
+                                sb.Clear();
+                                obs.OnNext(line);
                             }
                         }
-
-                        if (isMatch)
+                        else
                         {
-                            sb.Length -= newLineLocal.Length;
-                            var line = sb.ToString();
-                            sb.Clear();
-                            obs.OnNext(line);
+                            var buffer = System.Buffers.ArrayPool<char>.Shared.Rent(n);
+                            try
+                            {
+                                var tail = buffer.AsSpan(0, n);
+                                var start = sb.Length - n;
+                                for (var i = 0; i < n; i++)
+                                {
+                                    tail[i] = sb[start + i];
+                                }
+
+                                if (tail.SequenceEqual(newLineLocal.AsSpan()))
+                                {
+                                    sb.Length -= n;
+                                    var line = sb.ToString();
+                                    sb.Clear();
+                                    obs.OnNext(line);
+                                }
+                            }
+                            finally
+                            {
+                                System.Buffers.ArrayPool<char>.Shared.Return(buffer);
+                            }
                         }
                     }
                 },
@@ -467,7 +492,7 @@ public class SerialPortRx : ISerialPortRx
                         var br = await Task.Run(() => port.Read(x.buffer, x.offset, x.count)).ConfigureAwait(false);
                         for (var i = 0; i < br; i++)
                         {
-                            var item = x.buffer[i];
+                            var item = x.buffer[x.offset + i];
                             _bytesReceived.OnNext(item);
                         }
 
@@ -518,7 +543,7 @@ public class SerialPortRx : ISerialPortRx
                 obs.OnNext(compareNew);
             }
 
-            if (!string.Concat(compare).Equals(string.Concat(compareNew), StringComparison.Ordinal))
+            if (compare?.SequenceEqual(compareNew) == false)
             {
                 obs.OnNext(compareNew);
                 compare = compareNew;
@@ -697,21 +722,44 @@ public class SerialPortRx : ISerialPortRx
                 }
                 else if (sb.Length >= newLineLocal.Length)
                 {
-                    var start = sb.Length - newLineLocal.Length;
-                    var isMatch = true;
-                    for (var i = 0; i < newLineLocal.Length; i++)
+                    var n = newLineLocal.Length;
+                    if (n <= 256)
                     {
-                        if (sb[start + i] != newLineLocal[i])
+                        Span<char> tail = stackalloc char[n];
+                        var start = sb.Length - n;
+                        for (var i = 0; i < n; i++)
                         {
-                            isMatch = false;
-                            break;
+                            tail[i] = sb[start + i];
+                        }
+
+                        if (tail.SequenceEqual(newLineLocal.AsSpan()))
+                        {
+                            sb.Length -= n;
+                            tcs.TrySetResult(sb.ToString());
                         }
                     }
-
-                    if (isMatch)
+                    else
                     {
-                        sb.Length -= newLineLocal.Length;
-                        tcs.TrySetResult(sb.ToString());
+                        var buffer = System.Buffers.ArrayPool<char>.Shared.Rent(n);
+                        try
+                        {
+                            var tail = buffer.AsSpan(0, n);
+                            var start = sb.Length - n;
+                            for (var i = 0; i < n; i++)
+                            {
+                                tail[i] = sb[start + i];
+                            }
+
+                            if (tail.SequenceEqual(newLineLocal.AsSpan()))
+                            {
+                                sb.Length -= n;
+                                tcs.TrySetResult(sb.ToString());
+                            }
+                        }
+                        finally
+                        {
+                            System.Buffers.ArrayPool<char>.Shared.Return(buffer);
+                        }
                     }
                 }
             },
@@ -729,7 +777,7 @@ public class SerialPortRx : ISerialPortRx
 
         using (token.Register(() =>
         {
-            if (timeoutCts != null && timeoutCts.IsCancellationRequested && ReadTimeout > 0)
+            if (timeoutCts?.IsCancellationRequested == true && ReadTimeout > 0)
             {
                 tcs.TrySetException(new TimeoutException("ReadLineAsync timed out."));
             }
@@ -741,8 +789,7 @@ public class SerialPortRx : ISerialPortRx
         {
             try
             {
-                var result = await tcs.Task.ConfigureAwait(false);
-                return result;
+                return await tcs.Task.ConfigureAwait(false);
             }
             finally
             {

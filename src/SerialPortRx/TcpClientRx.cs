@@ -10,7 +10,7 @@ using System.Reactive.Linq;
 using System.Reactive.Subjects;
 using System.Threading;
 using System.Threading.Tasks;
-using ReactiveMarbles.Extensions;
+using ReactiveUI.Extensions;
 
 namespace CP.IO.Ports;
 
