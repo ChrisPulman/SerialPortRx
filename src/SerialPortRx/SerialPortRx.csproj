@@ -11,7 +11,7 @@
     <PackageReference Include="ReactiveUI.Extensions" Version="2.0.1" />
     <PackageReference Include="System.IO.Ports" Version="10.0.0-rc.1.25451.107" />
     <!-- Explicitly reference the core Rx package for reliability across TFMs -->
-    <PackageReference Include="System.Reactive" Version="6.0.2" />
+    <PackageReference Include="System.Reactive" Version="6.1.0" />
   </ItemGroup>
   
   <ItemGroup Condition="$(TargetFramework.EndsWith('netstandard2.0'))">
