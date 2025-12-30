@@ -3,6 +3,7 @@
 
 using System;
 using System.IO.Ports;
+using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -36,6 +37,16 @@ public interface ISerialPortRx : IPortRx
     /// </summary>
     /// <value>The error recived.</value>
     IObservable<Exception> ErrorReceived { get; }
+
+#if HasWindows
+    /// <summary>
+    /// Gets the pin changed.
+    /// </summary>
+    /// <value>
+    /// The pin changed.
+    /// </value>
+    IObservable<SerialPinChangedEventArgs> PinChanged { get; }
+#endif
 
     /// <summary>
     /// Gets or sets the handshake.
@@ -90,6 +101,90 @@ public interface ISerialPortRx : IPortRx
     string NewLine { get; set; }
 
     /// <summary>
+    /// Gets or sets the encoding.
+    /// </summary>
+    /// <value>The encoding.</value>
+    Encoding Encoding { get; set; }
+
+    /// <summary>
+    /// Gets or sets a value indicating whether break state.
+    /// </summary>
+    /// <value>The break state.</value>
+    bool BreakState { get; set; }
+
+    /// <summary>
+    /// Gets the number of bytes of data in the receive buffer.
+    /// </summary>
+    /// <value>The bytes to read.</value>
+    int BytesToRead { get; }
+
+    /// <summary>
+    /// Gets the number of bytes of data in the send buffer.
+    /// </summary>
+    /// <value>The bytes to write.</value>
+    int BytesToWrite { get; }
+
+    /// <summary>
+    /// Gets a value indicating whether the Carrier Detect (CD) signal is on.
+    /// </summary>
+    /// <value>The CD holding.</value>
+    bool CDHolding { get; }
+
+    /// <summary>
+    /// Gets a value indicating whether the Clear-to-Send (CTS) signal is on.
+    /// </summary>
+    /// <value>The CTS holding.</value>
+    bool CtsHolding { get; }
+
+    /// <summary>
+    /// Gets or sets a value indicating whether null bytes are ignored when transmitted between the port and the receive buffer.
+    /// </summary>
+    /// <value>The discard null.</value>
+    bool DiscardNull { get; set; }
+
+    /// <summary>
+    /// Gets a value indicating whether the Data Set Ready (DSR) signal is on.
+    /// </summary>
+    /// <value>The DSR holding.</value>
+    bool DsrHolding { get; }
+
+    /// <summary>
+    /// Gets or sets a value indicating whether the Data Terminal Ready (DTR) signal is enabled during serial communication.
+    /// </summary>
+    /// <value>The DTR enable.</value>
+    bool DtrEnable { get; set; }
+
+    /// <summary>
+    /// Gets or sets the parity replace.
+    /// </summary>
+    /// <value>The parity replace.</value>
+    byte ParityReplace { get; set; }
+
+    /// <summary>
+    /// Gets or sets the size of the read buffer.
+    /// </summary>
+    /// <value>The size of the read buffer.</value>
+    int ReadBufferSize { get; set; }
+
+    /// <summary>
+    /// Gets or sets the number of bytes in the internal input buffer before a DataReceived event is fired.
+    /// </summary>
+    /// <value>The received bytes threshold.</value>
+    int ReceivedBytesThreshold { get; set; }
+
+    /// <summary>
+    /// Gets or sets a value indicating whether the Request to Send (RTS) signal is enabled during serial communication.
+    /// </summary>
+    /// <value>The RTS enable.</value>
+    bool RtsEnable { get; set; }
+
+    /// <summary>
+    /// Gets or sets the size of the write buffer.
+    /// </summary>
+    /// <value>The size of the write buffer.</value>
+    int WriteBufferSize { get; set; }
+
+    /// <summary>
     /// Discards the out buffer.
     /// </summary>
     void DiscardOutBuffer();
@@ -138,4 +233,53 @@ public interface ISerialPortRx : IPortRx
     /// <param name="cancellationToken">Cancellation token to cancel waiting.</param>
     /// <returns>A Task of string.</returns>
     Task<string> ReadLineAsync(CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Reads the specified buffer.
+    /// </summary>
+    /// <param name="buffer">The buffer.</param>
+    /// <param name="offset">The offset.</param>
+    /// <param name="count">The count.</param>
+    /// <returns>An integer.</returns>
+    int Read(byte[] buffer, int offset, int count);
+
+    /// <summary>
+    /// Reads the specified buffer.
+    /// </summary>
+    /// <param name="buffer">The buffer.</param>
+    /// <param name="offset">The offset.</param>
+    /// <param name="count">The count.</param>
+    /// <returns>An integer.</returns>
+    int Read(char[] buffer, int offset, int count);
+
+    /// <summary>
+    /// Reads the byte.
+    /// </summary>
+    /// <returns>An integer.</returns>
+    int ReadByte();
+
+    /// <summary>
+    /// Reads the character.
+    /// </summary>
+    /// <returns>An integer.</returns>
+    int ReadChar();
+
+    /// <summary>
+    /// Reads the existing.
+    /// </summary>
+    /// <returns>A string.</returns>
+    string ReadExisting();
+
+    /// <summary>
+    /// Reads the line.
+    /// </summary>
+    /// <returns>A string.</returns>
+    string ReadLine();
+
+    /// <summary>
+    /// Reads to.
+    /// </summary>
+    /// <param name="value">The value.</param>
+    /// <returns>A string.</returns>
+    string ReadTo(string value);
 }

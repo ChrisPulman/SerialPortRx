@@ -36,11 +36,22 @@ public class SerialPortRx : ISerialPortRx
     private readonly Subject<(byte[] buffer, int offset, int count)> _readBytes = new();
     private readonly Subject<int> _bytesRead = new();
     private readonly Subject<int> _bytesReceived = new();
+    private readonly Subject<SerialPinChangedEventArgs> _pinChanged = new();
     private readonly SemaphoreSlim _readLock = new(1, 1);
     private CompositeDisposable _disposablePort = [];
 
     // Lazily-created line observable for continuous line parsing
     private IObservable<string>? _lines;
+
+    private SerialPort? _serialPort;
+    private bool _breakState;
+    private bool _discardNull;
+    private bool _dtrEnable;
+    private byte _parityReplace = 63;
+    private int _readBufferSize = 4096;
+    private int _receivedBytesThreshold = 1;
+    private bool _rtsEnable;
+    private int _writeBufferSize = 2048;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="SerialPortRx"/> class.
@@ -206,7 +217,7 @@ public class SerialPortRx : ISerialPortRx
     /// <value>The is open.</value>
     [Browsable(true)]
     [MonitoringDescription("IsOpen")]
-    public bool IsOpen { get; private set; }
+    public bool IsOpen => _serialPort?.IsOpen ?? false;
 
     /// <summary>
     /// Gets the is open observable.
@@ -269,6 +280,192 @@ public class SerialPortRx : ISerialPortRx
     [DefaultValue("\n")]
     [MonitoringDescription("NewLine")]
     public string NewLine { get; set; } = "\n";
+
+    /// <summary>
+    /// Gets or sets a value indicating whether break state.
+    /// </summary>
+    /// <value>The break state.</value>
+    [Browsable(true)]
+    [DefaultValue(false)]
+    [MonitoringDescription("BreakState")]
+    public bool BreakState
+    {
+        get => _serialPort?.BreakState ?? _breakState;
+        set
+        {
+            _breakState = value;
+            _serialPort?.BreakState = value;
+        }
+    }
+
+    /// <summary>
+    /// Gets the number of bytes of data in the receive buffer.
+    /// </summary>
+    /// <value>The bytes to read.</value>
+    [Browsable(false)]
+    [MonitoringDescription("BytesToRead")]
+    public int BytesToRead => _serialPort?.BytesToRead ?? 0;
+
+    /// <summary>
+    /// Gets the number of bytes of data in the send buffer.
+    /// </summary>
+    /// <value>The bytes to write.</value>
+    [Browsable(false)]
+    [MonitoringDescription("BytesToWrite")]
+    public int BytesToWrite => _serialPort?.BytesToWrite ?? 0;
+
+    /// <summary>
+    /// Gets a value indicating whether the Carrier Detect (CD) signal is on.
+    /// </summary>
+    /// <value>The CD holding.</value>
+    [Browsable(false)]
+    [MonitoringDescription("CDHolding")]
+    public bool CDHolding => _serialPort?.CDHolding ?? false;
+
+    /// <summary>
+    /// Gets a value indicating whether the Clear-to-Send (CTS) signal is on.
+    /// </summary>
+    /// <value>The CTS holding.</value>
+    [Browsable(false)]
+    [MonitoringDescription("CtsHolding")]
+    public bool CtsHolding => _serialPort?.CtsHolding ?? false;
+
+    /// <summary>
+    /// Gets or sets a value indicating whether null bytes are ignored when transmitted between the port and the receive buffer.
+    /// </summary>
+    /// <value>The discard null.</value>
+    [Browsable(true)]
+    [DefaultValue(false)]
+    [MonitoringDescription("DiscardNull")]
+    public bool DiscardNull
+    {
+        get => _serialPort?.DiscardNull ?? _discardNull;
+        set
+        {
+            _discardNull = value;
+            _serialPort?.DiscardNull = value;
+        }
+    }
+
+    /// <summary>
+    /// Gets a value indicating whether the Data Set Ready (DSR) signal is on.
+    /// </summary>
+    /// <value>The DSR holding.</value>
+    [Browsable(false)]
+    [MonitoringDescription("DsrHolding")]
+    public bool DsrHolding => _serialPort?.DsrHolding ?? false;
+
+    /// <summary>
+    /// Gets or sets a value indicating whether the Data Terminal Ready (DTR) signal is enabled during serial communication.
+    /// </summary>
+    /// <value>The DTR enable.</value>
+    [Browsable(true)]
+    [DefaultValue(false)]
+    [MonitoringDescription("DtrEnable")]
+    public bool DtrEnable
+    {
+        get => _serialPort?.DtrEnable ?? _dtrEnable;
+        set
+        {
+            _dtrEnable = value;
+            _serialPort?.DtrEnable = value;
+        }
+    }
+
+    /// <summary>
+    /// Gets or sets the parity replace.
+    /// </summary>
+    /// <value>The parity replace.</value>
+    [Browsable(true)]
+    [DefaultValue((byte)63)]
+    [MonitoringDescription("ParityReplace")]
+    public byte ParityReplace
+    {
+        get => _serialPort?.ParityReplace ?? _parityReplace;
+        set
+        {
+            _parityReplace = value;
+            _serialPort?.ParityReplace = value;
+        }
+    }
+
+    /// <summary>
+    /// Gets or sets the size of the read buffer.
+    /// </summary>
+    /// <value>The size of the read buffer.</value>
+    [Browsable(true)]
+    [DefaultValue(4096)]
+    [MonitoringDescription("ReadBufferSize")]
+    public int ReadBufferSize
+    {
+        get => _serialPort?.ReadBufferSize ?? _readBufferSize;
+        set
+        {
+            _readBufferSize = value;
+            _serialPort?.ReadBufferSize = value;
+        }
+    }
+
+    /// <summary>
+    /// Gets or sets the number of bytes in the internal input buffer before a DataReceived event is fired.
+    /// </summary>
+    /// <value>The received bytes threshold.</value>
+    [Browsable(true)]
+    [DefaultValue(1)]
+    [MonitoringDescription("ReceivedBytesThreshold")]
+    public int ReceivedBytesThreshold
+    {
+        get => _serialPort?.ReceivedBytesThreshold ?? _receivedBytesThreshold;
+        set
+        {
+            _receivedBytesThreshold = value;
+            _serialPort?.ReceivedBytesThreshold = value;
+        }
+    }
+
+    /// <summary>
+    /// Gets or sets a value indicating whether the Request to Send (RTS) signal is enabled during serial communication.
+    /// </summary>
+    /// <value>The RTS enable.</value>
+    [Browsable(true)]
+    [DefaultValue(false)]
+    [MonitoringDescription("RtsEnable")]
+    public bool RtsEnable
+    {
+        get => _serialPort?.RtsEnable ?? _rtsEnable;
+        set
+        {
+            _rtsEnable = value;
+            _serialPort?.RtsEnable = value;
+        }
+    }
+
+    /// <summary>
+    /// Gets or sets the size of the write buffer.
+    /// </summary>
+    /// <value>The size of the write buffer.</value>
+    [Browsable(true)]
+    [DefaultValue(2048)]
+    [MonitoringDescription("WriteBufferSize")]
+    public int WriteBufferSize
+    {
+        get => _serialPort?.WriteBufferSize ?? _writeBufferSize;
+        set
+        {
+            _writeBufferSize = value;
+            _serialPort?.WriteBufferSize = value;
+        }
+    }
+
+#if HasWindows
+    /// <summary>
+    /// Gets the pin changed.
+    /// </summary>
+    /// <value>
+    /// The pin changed.
+    /// </value>
+    public IObservable<SerialPinChangedEventArgs> PinChanged => _pinChanged.Retry().Publish().RefCount();
+#endif
 
     /// <summary>
     /// Gets a lazily-created observable sequence of complete lines split by the NewLine sequence.
@@ -355,23 +552,44 @@ public class SerialPortRx : ISerialPortRx
         if (!SerialPort.GetPortNames().Any(name => name.Equals(PortName, StringComparison.OrdinalIgnoreCase)))
         {
             obs.OnError(new Exception($"Serial Port {PortName} does not exist"));
+            return dis;
         }
         else
         {
-            // Setup Com Port
-            var port = new SerialPort(PortName, BaudRate, Parity, DataBits, StopBits)
+            SerialPort port;
+            try
             {
-                NewLine = NewLine,
-                Handshake = Handshake,
-                ReadTimeout = ReadTimeout,
-                WriteTimeout = WriteTimeout,
-                Encoding = Encoding
-            };
+                port = new SerialPort(PortName, BaudRate, Parity, DataBits, StopBits)
+                {
+                    NewLine = NewLine,
+                    Handshake = Handshake,
+                    ReadTimeout = ReadTimeout,
+                    WriteTimeout = WriteTimeout,
+                    Encoding = Encoding,
+                    ReadBufferSize = _readBufferSize,
+                    WriteBufferSize = _writeBufferSize,
+                };
+            }
+            catch (Exception ex)
+            {
+                obs.OnError(ex);
+                return dis;
+            }
+#if HasWindows
+            port.PinChangedObserver().Subscribe(_pinChanged).DisposeWith(dis);
+#endif
 
             dis.Add(port);
+            _serialPort = port;
             try
             {
                 port.Open();
+                port.BreakState = _breakState;
+                port.DiscardNull = _discardNull;
+                port.DtrEnable = _dtrEnable;
+                port.ParityReplace = _parityReplace;
+                port.ReceivedBytesThreshold = _receivedBytesThreshold;
+                port.RtsEnable = _rtsEnable;
             }
             catch (Exception ex)
             {
@@ -380,7 +598,6 @@ public class SerialPortRx : ISerialPortRx
             }
 
             _isOpenValue.OnNext(port.IsOpen);
-            IsOpen = port.IsOpen;
 
             // Clear any existing buffers
             if (IsOpen)
@@ -498,6 +715,10 @@ public class SerialPortRx : ISerialPortRx
 
                         _bytesRead.OnNext(br);
                     }
+                    catch (TimeoutException)
+                    {
+                        _bytesRead.OnNext(0);
+                    }
                     catch (Exception ex)
                     {
                         obs.OnError(ex);
@@ -512,8 +733,8 @@ public class SerialPortRx : ISerialPortRx
 
         return Disposable.Create(() =>
         {
-            IsOpen = false;
             _isOpenValue.OnNext(false);
+            _serialPort = null;
             dis.Dispose();
         });
     }).OnErrorRetry((Exception ex) => _errors.OnNext(ex)).Publish().RefCount();
@@ -682,7 +903,162 @@ public class SerialPortRx : ISerialPortRx
     public async Task<int> ReadAsync(byte[] buffer, int offset, int count)
     {
         _readBytes.OnNext((buffer, offset, count));
-        return await _bytesRead;
+        return await _bytesRead.FirstAsync();
+    }
+
+    /// <summary>
+    /// Reads a number of bytes from the SerialPort input buffer and writes those bytes into a byte array at the specified offset.
+    /// </summary>
+    /// <param name="buffer">The byte array to write the input to.</param>
+    /// <param name="offset">The offset in the buffer array to begin writing.</param>
+    /// <param name="count">The number of bytes to read.</param>
+    /// <returns>The number of bytes read.</returns>
+    public int Read(byte[] buffer, int offset, int count)
+    {
+        EnsureOpen();
+        _readLock.Wait();
+        try
+        {
+            return _serialPort!.Read(buffer, offset, count);
+        }
+        finally
+        {
+            _readLock.Release();
+        }
+    }
+
+    /// <summary>
+    /// Reads a number of characters from the SerialPort input buffer and writes those characters into a character array at the specified offset.
+    /// </summary>
+    /// <param name="buffer">The character array to write the input to.</param>
+    /// <param name="offset">The offset in the buffer array to begin writing.</param>
+    /// <param name="count">The number of characters to read.</param>
+    /// <returns>The number of characters read.</returns>
+    public int Read(char[] buffer, int offset, int count)
+    {
+        EnsureOpen();
+        _readLock.Wait();
+        try
+        {
+            return _serialPort!.Read(buffer, offset, count);
+        }
+        finally
+        {
+            _readLock.Release();
+        }
+    }
+
+    /// <summary>
+    /// Synchronously reads one byte from the SerialPort input buffer.
+    /// </summary>
+    /// <returns>The byte, or -1 if no byte is available.</returns>
+    public int ReadByte()
+    {
+        EnsureOpen();
+        _readLock.Wait();
+        try
+        {
+            return _serialPort!.ReadByte();
+        }
+        finally
+        {
+            _readLock.Release();
+        }
+    }
+
+    /// <summary>
+    /// Synchronously reads one character from the SerialPort input buffer.
+    /// </summary>
+    /// <returns>The character, or -1 if no character is available.</returns>
+    public int ReadChar()
+    {
+        EnsureOpen();
+        _readLock.Wait();
+        try
+        {
+            return _serialPort!.ReadChar();
+        }
+        finally
+        {
+            _readLock.Release();
+        }
+    }
+
+    /// <summary>
+    /// Reads all immediately available bytes, based on the encoding, in both the stream and the input buffer of the SerialPort object.
+    /// </summary>
+    /// <returns>The contents of the input buffer and the stream.</returns>
+    public string ReadExisting()
+    {
+        EnsureOpen();
+        _readLock.Wait();
+        try
+        {
+            return _serialPort!.ReadExisting();
+        }
+        finally
+        {
+            _readLock.Release();
+        }
+    }
+
+    /// <summary>
+    /// Reads up to the NewLine value in the input buffer.
+    /// </summary>
+    /// <returns>The contents of the input buffer up to the first occurrence of a NewLine value.</returns>
+    public string ReadLine()
+    {
+        EnsureOpen();
+        _readLock.Wait();
+        try
+        {
+            return _serialPort!.ReadLine();
+        }
+        finally
+        {
+            _readLock.Release();
+        }
+    }
+
+    /// <summary>
+    /// Reads a string up to the specified value in the input buffer.
+    /// </summary>
+    /// <param name="value">The value to read up to.</param>
+    /// <returns>The contents of the input buffer up to the specified value.</returns>
+    public string ReadTo(string value)
+    {
+        EnsureOpen();
+        if (string.IsNullOrEmpty(value))
+        {
+            throw new ArgumentNullException(nameof(value));
+        }
+
+        _readLock.Wait();
+        try
+        {
+            var sb = new StringBuilder();
+            while (true)
+            {
+                var c = _serialPort!.ReadChar();
+                if (c == -1)
+                {
+                    break;
+                }
+
+                sb.Append((char)c);
+                if (sb.Length >= value.Length && sb.ToString(sb.Length - value.Length, value.Length) == value)
+                {
+                    sb.Length -= value.Length;
+                    break;
+                }
+            }
+
+            return sb.ToString();
+        }
+        finally
+        {
+            _readLock.Release();
+        }
     }
 
     /// <summary>
@@ -699,51 +1075,35 @@ public class SerialPortRx : ISerialPortRx
     /// <returns>A Task of string.</returns>
     public async Task<string> ReadLineAsync(CancellationToken cancellationToken)
     {
-        if (!IsOpen)
+        EnsureOpen();
+
+        await _readLock.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
         {
-            throw new InvalidOperationException("Serial port is not open.");
-        }
+            var tcs = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
+            var sb = new StringBuilder();
+            var newLineLocal = NewLine ?? "\n";
 
-        var tcs = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
-        var sb = new StringBuilder();
-        var newLineLocal = NewLine ?? "\n";
-
-        var subscription = DataReceived.Subscribe(
-            ch =>
-            {
-                sb.Append(ch);
-                if (newLineLocal.Length == 1)
+            var subscription = DataReceived.Subscribe(
+                ch =>
                 {
-                    if (ch == newLineLocal[0])
+                    sb.Append(ch);
+                    if (newLineLocal.Length == 1)
                     {
-                        sb.Length--;
-                        tcs.TrySetResult(sb.ToString());
-                    }
-                }
-                else if (sb.Length >= newLineLocal.Length)
-                {
-                    var n = newLineLocal.Length;
-                    if (n <= 256)
-                    {
-                        Span<char> tail = stackalloc char[n];
-                        var start = sb.Length - n;
-                        for (var i = 0; i < n; i++)
+                        if (ch == newLineLocal[0])
                         {
-                            tail[i] = sb[start + i];
-                        }
-
-                        if (tail.SequenceEqual(newLineLocal.AsSpan()))
-                        {
-                            sb.Length -= n;
-                            tcs.TrySetResult(sb.ToString());
+                            sb.Length--;
+                            var line = sb.ToString();
+                            sb.Clear();
+                            tcs.TrySetResult(line);
                         }
                     }
-                    else
+                    else if (sb.Length >= newLineLocal.Length)
                     {
-                        var buffer = System.Buffers.ArrayPool<char>.Shared.Rent(n);
-                        try
+                        var n = newLineLocal.Length;
+                        if (n <= 256)
                         {
-                            var tail = buffer.AsSpan(0, n);
+                            Span<char> tail = stackalloc char[n];
                             var start = sb.Length - n;
                             for (var i = 0; i < n; i++)
                             {
@@ -753,49 +1113,77 @@ public class SerialPortRx : ISerialPortRx
                             if (tail.SequenceEqual(newLineLocal.AsSpan()))
                             {
                                 sb.Length -= n;
-                                tcs.TrySetResult(sb.ToString());
+                                var line = sb.ToString();
+                                sb.Clear();
+                                tcs.TrySetResult(line);
                             }
                         }
-                        finally
+                        else
                         {
-                            System.Buffers.ArrayPool<char>.Shared.Return(buffer);
+                            var buffer = System.Buffers.ArrayPool<char>.Shared.Rent(n);
+                            try
+                            {
+                                var tail = buffer.AsSpan(0, n);
+                                var start = sb.Length - n;
+                                for (var i = 0; i < n; i++)
+                                {
+                                    tail[i] = sb[start + i];
+                                }
+
+                                if (tail.SequenceEqual(newLineLocal.AsSpan()))
+                                {
+                                    sb.Length -= n;
+                                    var line = sb.ToString();
+                                    sb.Clear();
+                                    tcs.TrySetResult(line);
+                                }
+                            }
+                            finally
+                            {
+                                System.Buffers.ArrayPool<char>.Shared.Return(buffer);
+                            }
                         }
                     }
+                },
+                ex => tcs.TrySetException(ex),
+                () => tcs.TrySetException(new InvalidOperationException("Serial port is not open.")));
+
+            CancellationTokenSource? timeoutCts = null;
+            var token = cancellationToken;
+            if (ReadTimeout > 0)
+            {
+                timeoutCts = new CancellationTokenSource(ReadTimeout);
+                token = cancellationToken.CanBeCanceled
+                    ? CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeoutCts.Token).Token
+                    : timeoutCts.Token;
+            }
+
+            using (token.Register(() =>
+            {
+                if (timeoutCts?.IsCancellationRequested == true && ReadTimeout > 0)
+                {
+                    tcs.TrySetException(new TimeoutException("ReadLineAsync timed out."));
                 }
-            },
-            ex => tcs.TrySetException(ex));
-
-        CancellationTokenSource? timeoutCts = null;
-        var token = cancellationToken;
-        if (ReadTimeout > 0)
-        {
-            timeoutCts = new CancellationTokenSource(ReadTimeout);
-            token = cancellationToken.CanBeCanceled
-                ? CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeoutCts.Token).Token
-                : timeoutCts.Token;
+                else
+                {
+                    tcs.TrySetCanceled(token);
+                }
+            }))
+            {
+                try
+                {
+                    return await tcs.Task.ConfigureAwait(false);
+                }
+                finally
+                {
+                    subscription.Dispose();
+                    timeoutCts?.Dispose();
+                }
+            }
         }
-
-        using (token.Register(() =>
+        finally
         {
-            if (timeoutCts?.IsCancellationRequested == true && ReadTimeout > 0)
-            {
-                tcs.TrySetException(new TimeoutException("ReadLineAsync timed out."));
-            }
-            else
-            {
-                tcs.TrySetCanceled(token);
-            }
-        }))
-        {
-            try
-            {
-                return await tcs.Task.ConfigureAwait(false);
-            }
-            finally
-            {
-                subscription.Dispose();
-                timeoutCts?.Dispose();
-            }
+            _readLock.Release();
         }
     }
 
@@ -826,9 +1214,18 @@ public class SerialPortRx : ISerialPortRx
                 _bytesReceived.Dispose();
                 _disposablePort?.Dispose();
                 _readLock.Dispose();
+                _pinChanged.Dispose();
             }
 
             IsDisposed = true;
+        }
+    }
+
+    private void EnsureOpen()
+    {
+        if (!IsOpen)
+        {
+            throw new InvalidOperationException("Serial port is not open.");
         }
     }
 }
