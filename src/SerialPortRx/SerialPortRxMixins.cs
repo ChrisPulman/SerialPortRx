@@ -173,6 +173,15 @@ public static class SerialPortRxMixins
     /// <returns>Observable value.</returns>
     public static IObservable<EventPattern<SerialErrorReceivedEventArgs>> ErrorReceivedObserver(this SerialPort @this) => Observable.FromEventPattern<SerialErrorReceivedEventHandler, SerialErrorReceivedEventArgs>(h => @this.ErrorReceived += h, h => @this.ErrorReceived -= h);
 
+#if HasWindows
+    /// <summary>
+    /// Monitors the PinChanged observer.
+    /// </summary>
+    /// <param name="this">The this.</param>
+    /// <returns>Observable value.</returns>
+    public static IObservable<SerialPinChangedEventArgs> PinChangedObserver(this SerialPort @this) => Observable.FromEvent<SerialPinChangedEventHandler, SerialPinChangedEventArgs>(h => @this.PinChanged += h, h => @this.PinChanged -= h);
+#endif
+
     /// <summary>
     /// Executes while port is open at the given TimeSpan.
     /// </summary>
