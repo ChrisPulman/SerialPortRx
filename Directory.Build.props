@@ -37,8 +37,20 @@
     <ContinuousIntegrationBuild>true</ContinuousIntegrationBuild>
   </PropertyGroup>
 
+  <PropertyGroup>
+    <!-- Cross-platform TFMs that work on all platforms -->
+    <NetCoreTargetFrameworks>net8.0;net9.0;net10.0</NetCoreTargetFrameworks>
+
+    <!-- Windows-only .NET Framework TFMs - only included on Windows builds -->
+    <NetFrameworkTargetFrameworks Condition="$([MSBuild]::IsOsPlatform('Windows'))">net462;net472;net481</NetFrameworkTargetFrameworks>
+
+    <!-- Library projects: netstandard2.0, net462, net472, net8.0, net9.0, net10.0 -->
+    <LibraryTargetFrameworks>$(NetCoreTargetFrameworks)</LibraryTargetFrameworks>
+    <LibraryTargetFrameworks Condition="'$(NetFrameworkTargetFrameworks)' != ''">$(LibraryTargetFrameworks);$(NetFrameworkTargetFrameworks)</LibraryTargetFrameworks>
+  </PropertyGroup>
+
   <ItemGroup Condition="'$(IsTestProject)' != 'true'">
-    <PackageReference Include="Microsoft.SourceLink.GitHub" Version="8.0.0" PrivateAssets="All" />
+    <PackageReference Include="Microsoft.SourceLink.GitHub" Version="10.0.102" PrivateAssets="All" />
   </ItemGroup>
 
   <ItemGroup>

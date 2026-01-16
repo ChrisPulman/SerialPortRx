@@ -7,6 +7,7 @@ using System.Net;
 using System.Net.Sockets;
 using System.Reactive;
 using System.Reactive.Disposables;
+using System.Reactive.Disposables.Fluent;
 using System.Reactive.Linq;
 using System.Reactive.Subjects;
 using System.Threading;
@@ -245,7 +246,7 @@ public class UdpClientRx : IPortRx
     /// <param name="count">The count.</param>
     public void Write(byte[] buffer, int offset, int count)
     {
-#if NETSTANDARD
+#if NETFRAMEWORK
         if (buffer == null)
         {
             throw new ArgumentNullException(nameof(buffer));
@@ -305,7 +306,7 @@ public class UdpClientRx : IPortRx
     /// <returns>A int.</returns>
     public Task<int> ReadAsync(byte[] buffer, int offset, int count)
     {
-#if NETSTANDARD
+#if NETFRAMEWORK
         if (buffer == null)
         {
             throw new ArgumentNullException(nameof(buffer));

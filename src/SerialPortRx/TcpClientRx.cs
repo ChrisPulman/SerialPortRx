@@ -6,6 +6,7 @@ using System.Net;
 using System.Net.Sockets;
 using System.Reactive;
 using System.Reactive.Disposables;
+using System.Reactive.Disposables.Fluent;
 using System.Reactive.Linq;
 using System.Reactive.Subjects;
 using System.Threading;
@@ -264,7 +265,7 @@ public class TcpClientRx : IPortRx
                             int read;
                             try
                             {
-#if NETSTANDARD2_0
+#if NETFRAMEWORK
                                 read = await Stream.ReadAsync(buffer, 0, buffer.Length, token).ConfigureAwait(false);
 #else
                                 read = await Stream.ReadAsync(buffer.AsMemory(0, buffer.Length), token).ConfigureAwait(false);

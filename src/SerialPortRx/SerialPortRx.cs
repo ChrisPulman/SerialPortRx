@@ -2,18 +2,20 @@
 // Licensed under the MIT license. See LICENSE file in the project root for full license information.
 
 using System;
+using System.Buffers;
 using System.ComponentModel;
 using System.Diagnostics;
 using System.IO.Ports;
 using System.Linq;
 using System.Reactive;
 using System.Reactive.Disposables;
+using System.Reactive.Disposables.Fluent;
 using System.Reactive.Linq;
 using System.Reactive.Subjects;
+using System.Runtime.CompilerServices;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
-using ReactiveUI.Extensions;
 
 namespace CP.IO.Ports;
 
@@ -23,9 +25,10 @@ namespace CP.IO.Ports;
 /// <seealso cref="ISerialPortRx"/>
 public class SerialPortRx : ISerialPortRx
 {
-    private static readonly string[] noPorts = ["NoPorts"];
+    private static readonly string[] NoPorts = ["NoPorts"];
     private readonly ReplaySubject<bool> _isOpenValue = new(1);
     private readonly Subject<char> _dataReceived = new();
+    private readonly Subject<byte> _dataReceivedBytes = new();
     private readonly Subject<Exception> _errors = new();
     private readonly Subject<(byte[] byteArray, int offset, int count)> _writeByte = new();
     private readonly Subject<(char[] charArray, int offset, int count)> _writeChar = new();
@@ -38,10 +41,19 @@ public class SerialPortRx : ISerialPortRx
     private readonly Subject<int> _bytesReceived = new();
     private readonly Subject<SerialPinChangedEventArgs> _pinChanged = new();
     private readonly SemaphoreSlim _readLock = new(1, 1);
+    private readonly object _observableCacheLock = new();
     private CompositeDisposable _disposablePort = [];
 
-    // Lazily-created line observable for continuous line parsing
+    // Cached observables to avoid Publish/RefCount allocation on each property access
+    private IObservable<char>? _cachedDataReceived;
+    private IObservable<byte>? _cachedDataReceivedBytes;
+    private IObservable<int>? _cachedBytesReceived;
+    private IObservable<Exception>? _cachedErrorReceived;
+    private IObservable<bool>? _cachedIsOpenObservable;
     private IObservable<string>? _lines;
+#if HasWindows
+    private IObservable<SerialPinChangedEventArgs>? _cachedPinChanged;
+#endif
 
     private SerialPort? _serialPort;
     private bool _breakState;
@@ -168,16 +180,22 @@ public class SerialPortRx : ISerialPortRx
     public int DataBits { get; set; } = 8;
 
     /// <summary>
-    /// Gets the data received.
+    /// Gets the data received as characters.
     /// </summary>
     /// <value>The data received.</value>
-    public IObservable<char> DataReceived => _dataReceived.Retry().Publish().RefCount();
+    public IObservable<char> DataReceived => GetOrCreateCachedObservable(ref _cachedDataReceived, _dataReceived);
+
+    /// <summary>
+    /// Gets the raw bytes received from the serial port.
+    /// </summary>
+    /// <value>The raw bytes received.</value>
+    public IObservable<byte> DataReceivedBytes => GetOrCreateCachedObservable(ref _cachedDataReceivedBytes, _dataReceivedBytes);
 
     /// <summary>
     /// Gets the data received when executing ReadAsync.
     /// </summary>
     /// <value>The data received.</value>
-    public IObservable<int> BytesReceived => _bytesReceived.Retry().Publish().RefCount();
+    public IObservable<int> BytesReceived => GetOrCreateCachedObservable(ref _cachedBytesReceived, _bytesReceived);
 
     /// <summary>
     /// Gets or sets the encoding.
@@ -192,7 +210,9 @@ public class SerialPortRx : ISerialPortRx
     /// Gets the error received.
     /// </summary>
     /// <value>The error received.</value>
-    public IObservable<Exception> ErrorReceived => _errors.Distinct(ex => ex.Message).Retry().Publish().RefCount();
+    public IObservable<Exception> ErrorReceived => GetOrCreateCachedObservable(
+        ref _cachedErrorReceived,
+        () => _errors.Distinct(ex => ex.Message).Retry().Publish().RefCount());
 
     /// <summary>
     /// Gets or sets the handshake.
@@ -223,7 +243,9 @@ public class SerialPortRx : ISerialPortRx
     /// Gets the is open observable.
     /// </summary>
     /// <value>The is open observable.</value>
-    public IObservable<bool> IsOpenObservable => _isOpenValue.DistinctUntilChanged();
+    public IObservable<bool> IsOpenObservable => GetOrCreateCachedObservable(
+        ref _cachedIsOpenObservable,
+        () => _isOpenValue.DistinctUntilChanged());
 
     /// <summary>
     /// Gets or sets the parity.
@@ -457,6 +479,18 @@ public class SerialPortRx : ISerialPortRx
         }
     }
 
+    /// <summary>
+    /// Gets or sets a value indicating whether to automatically consume received data
+    /// and feed it to the DataReceived and DataReceivedBytes observables.
+    /// Set to false if you want to use synchronous Read methods instead.
+    /// Must be set before calling Open().
+    /// </summary>
+    /// <value>True to enable automatic data reception (default), false to use sync reads.</value>
+    [Browsable(true)]
+    [DefaultValue(true)]
+    [MonitoringDescription("EnableAutoDataReceive")]
+    public bool EnableAutoDataReceive { get; set; } = true;
+
 #if HasWindows
     /// <summary>
     /// Gets the pin changed.
@@ -464,85 +498,13 @@ public class SerialPortRx : ISerialPortRx
     /// <value>
     /// The pin changed.
     /// </value>
-    public IObservable<SerialPinChangedEventArgs> PinChanged => _pinChanged.Retry().Publish().RefCount();
+    public IObservable<SerialPinChangedEventArgs> PinChanged => GetOrCreateCachedObservable(ref _cachedPinChanged, _pinChanged);
 #endif
 
     /// <summary>
     /// Gets a lazily-created observable sequence of complete lines split by the NewLine sequence.
     /// </summary>
-    public IObservable<string> Lines => _lines ??= Observable.Defer(() =>
-        Observable.Create<string>(obs =>
-        {
-            var sb = new StringBuilder();
-            var newLineLocal = NewLine ?? "\n";
-
-            var sub = DataReceived.Subscribe(
-                ch =>
-                {
-                    sb.Append(ch);
-                    if (newLineLocal.Length == 1)
-                    {
-                        if (ch == newLineLocal[0])
-                        {
-                            sb.Length--;
-                            var line = sb.ToString();
-                            sb.Clear();
-                            obs.OnNext(line);
-                        }
-                    }
-                    else if (sb.Length >= newLineLocal.Length)
-                    {
-                        var n = newLineLocal.Length;
-                        if (n <= 256)
-                        {
-                            Span<char> tail = stackalloc char[n];
-                            var start = sb.Length - n;
-                            for (var i = 0; i < n; i++)
-                            {
-                                tail[i] = sb[start + i];
-                            }
-
-                            if (tail.SequenceEqual(newLineLocal.AsSpan()))
-                            {
-                                sb.Length -= n;
-                                var line = sb.ToString();
-                                sb.Clear();
-                                obs.OnNext(line);
-                            }
-                        }
-                        else
-                        {
-                            var buffer = System.Buffers.ArrayPool<char>.Shared.Rent(n);
-                            try
-                            {
-                                var tail = buffer.AsSpan(0, n);
-                                var start = sb.Length - n;
-                                for (var i = 0; i < n; i++)
-                                {
-                                    tail[i] = sb[start + i];
-                                }
-
-                                if (tail.SequenceEqual(newLineLocal.AsSpan()))
-                                {
-                                    sb.Length -= n;
-                                    var line = sb.ToString();
-                                    sb.Clear();
-                                    obs.OnNext(line);
-                                }
-                            }
-                            finally
-                            {
-                                System.Buffers.ArrayPool<char>.Shared.Return(buffer);
-                            }
-                        }
-                    }
-                },
-                obs.OnError);
-
-            return sub;
-        })
-        .Publish()
-        .RefCount());
+    public IObservable<string> Lines => _lines ??= CreateLinesObservable();
 
     private IObservable<Unit> Connect => Observable.Create<Unit>(obs =>
     {
@@ -611,12 +573,35 @@ public class SerialPortRx : ISerialPortRx
             // Subscribe to port errors
             dis.Add(port.ErrorReceivedObserver().Subscribe(e => obs.OnError(new Exception(e.EventArgs.EventType.ToString()))));
 
-            // Get the stream of Char from the serial port
-            var dataStream =
-                from events in port.DataReceivedObserver()
-                from data in port.ReadExisting()
-                select data;
-            dis.Add(dataStream.Subscribe(_dataReceived.OnNext, obs.OnError));
+            // Get the stream of data from the serial port using the DataReceived event
+            // Only subscribe if EnableAutoDataReceive is true (allows sync reads when false)
+            if (EnableAutoDataReceive)
+            {
+                dis.Add(port.DataReceivedObserver()
+                    .SelectMany(_ =>
+                    {
+                        try
+                        {
+                            var data = port.ReadExisting();
+                            return data.ToCharArray().ToObservable();
+                        }
+                        catch (OperationCanceledException)
+                        {
+                            return Observable.Empty<char>();
+                        }
+                        catch (Exception)
+                        {
+                            return Observable.Empty<char>();
+                        }
+                    })
+                    .Subscribe(
+                        ch =>
+                        {
+                            _dataReceived.OnNext(ch);
+                            _dataReceivedBytes.OnNext((byte)ch);
+                        },
+                        obs.OnError));
+            }
 
             // setup Write streams
             dis.Add(_writeString.Subscribe(
@@ -706,7 +691,19 @@ public class SerialPortRx : ISerialPortRx
 
                         // Yield to avoid blocking the OnNext caller's thread
                         await Task.Yield();
-                        var br = await Task.Run(() => port.Read(x.buffer, x.offset, x.count)).ConfigureAwait(false);
+
+                        // Read only available bytes, up to the requested count
+                        var bytesAvailable = port.BytesToRead;
+                        if (bytesAvailable == 0)
+                        {
+                            // No data available, signal 0 bytes read
+                            _bytesRead.OnNext(0);
+                            return;
+                        }
+
+                        var bytesToRead = Math.Min(bytesAvailable, x.count);
+                        var br = port.Read(x.buffer, x.offset, bytesToRead);
+
                         for (var i = 0; i < br; i++)
                         {
                             var item = x.buffer[x.offset + i];
@@ -733,11 +730,14 @@ public class SerialPortRx : ISerialPortRx
 
         return Disposable.Create(() =>
         {
-            _isOpenValue.OnNext(false);
-            _serialPort = null;
-            dis.Dispose();
+            if (!IsDisposed)
+            {
+                _isOpenValue.OnNext(false);
+                _serialPort = null;
+                dis.Dispose();
+            }
         });
-    }).OnErrorRetry((Exception ex) => _errors.OnNext(ex)).Publish().RefCount();
+    }).Publish().RefCount();
 
     /// <summary>
     /// Gets the port names.
@@ -755,7 +755,7 @@ public class SerialPortRx : ISerialPortRx
             var compareNew = SerialPort.GetPortNames();
             if (compareNew.Length == 0)
             {
-                compareNew = noPorts;
+                compareNew = NoPorts;
             }
 
             if (compare == null)
@@ -845,7 +845,7 @@ public class SerialPortRx : ISerialPortRx
     /// <param name="byteArray">The byte array.</param>
     public void Write(byte[] byteArray)
     {
-#if NETSTANDARD
+#if NETFRAMEWORK
         if (byteArray == null)
         {
             throw new ArgumentNullException(nameof(byteArray));
@@ -863,7 +863,7 @@ public class SerialPortRx : ISerialPortRx
     /// <param name="charArray">The character array.</param>
     public void Write(char[] charArray)
     {
-#if NETSTANDARD
+#if NETFRAMEWORK
         if (charArray == null)
         {
             throw new ArgumentNullException(nameof(charArray));
@@ -902,7 +902,24 @@ public class SerialPortRx : ISerialPortRx
     /// </returns>
     public async Task<int> ReadAsync(byte[] buffer, int offset, int count)
     {
+        EnsureOpen();
         _readBytes.OnNext((buffer, offset, count));
+
+        // Use timeout if configured, otherwise wait indefinitely
+        if (ReadTimeout > 0)
+        {
+            var timeoutObservable = Observable.Timer(TimeSpan.FromMilliseconds(ReadTimeout))
+                .Select(_ => -1);
+
+            var result = await _bytesRead.Take(1).Amb(timeoutObservable).FirstAsync();
+            if (result == -1)
+            {
+                throw new TimeoutException("ReadAsync timed out.");
+            }
+
+            return result;
+        }
+
         return await _bytesRead.FirstAsync();
     }
 
@@ -915,11 +932,31 @@ public class SerialPortRx : ISerialPortRx
     /// <returns>The number of bytes read.</returns>
     public int Read(byte[] buffer, int offset, int count)
     {
+#if NETFRAMEWORK
+        if (buffer == null)
+        {
+            throw new ArgumentNullException(nameof(buffer));
+        }
+#else
+        ArgumentNullException.ThrowIfNull(buffer);
+#endif
+
         EnsureOpen();
         _readLock.Wait();
         try
         {
-            return _serialPort!.Read(buffer, offset, count);
+            for (var i = 0; i < count; i++)
+            {
+                var b = _serialPort!.ReadByte();
+                if (b == -1)
+                {
+                    throw new TimeoutException();
+                }
+
+                buffer[offset + i] = (byte)b;
+            }
+
+            return count;
         }
         finally
         {
@@ -1081,81 +1118,39 @@ public class SerialPortRx : ISerialPortRx
         try
         {
             var tcs = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
-            var sb = new StringBuilder();
+            var sb = new StringBuilder(256);
             var newLineLocal = NewLine ?? "\n";
+            var newLineLength = newLineLocal.Length;
+            var newLineFirstChar = newLineLocal[0];
 
             var subscription = DataReceived.Subscribe(
                 ch =>
                 {
                     sb.Append(ch);
-                    if (newLineLocal.Length == 1)
+                    if (TryExtractLine(sb, newLineLocal, newLineLength, newLineFirstChar, ch, out var line))
                     {
-                        if (ch == newLineLocal[0])
-                        {
-                            sb.Length--;
-                            var line = sb.ToString();
-                            sb.Clear();
-                            tcs.TrySetResult(line);
-                        }
-                    }
-                    else if (sb.Length >= newLineLocal.Length)
-                    {
-                        var n = newLineLocal.Length;
-                        if (n <= 256)
-                        {
-                            Span<char> tail = stackalloc char[n];
-                            var start = sb.Length - n;
-                            for (var i = 0; i < n; i++)
-                            {
-                                tail[i] = sb[start + i];
-                            }
-
-                            if (tail.SequenceEqual(newLineLocal.AsSpan()))
-                            {
-                                sb.Length -= n;
-                                var line = sb.ToString();
-                                sb.Clear();
-                                tcs.TrySetResult(line);
-                            }
-                        }
-                        else
-                        {
-                            var buffer = System.Buffers.ArrayPool<char>.Shared.Rent(n);
-                            try
-                            {
-                                var tail = buffer.AsSpan(0, n);
-                                var start = sb.Length - n;
-                                for (var i = 0; i < n; i++)
-                                {
-                                    tail[i] = sb[start + i];
-                                }
-
-                                if (tail.SequenceEqual(newLineLocal.AsSpan()))
-                                {
-                                    sb.Length -= n;
-                                    var line = sb.ToString();
-                                    sb.Clear();
-                                    tcs.TrySetResult(line);
-                                }
-                            }
-                            finally
-                            {
-                                System.Buffers.ArrayPool<char>.Shared.Return(buffer);
-                            }
-                        }
+                        tcs.TrySetResult(line);
                     }
                 },
                 ex => tcs.TrySetException(ex),
                 () => tcs.TrySetException(new InvalidOperationException("Serial port is not open.")));
 
             CancellationTokenSource? timeoutCts = null;
+            CancellationTokenSource? linkedCts = null;
             var token = cancellationToken;
+
             if (ReadTimeout > 0)
             {
                 timeoutCts = new CancellationTokenSource(ReadTimeout);
-                token = cancellationToken.CanBeCanceled
-                    ? CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeoutCts.Token).Token
-                    : timeoutCts.Token;
+                if (cancellationToken.CanBeCanceled)
+                {
+                    linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeoutCts.Token);
+                    token = linkedCts.Token;
+                }
+                else
+                {
+                    token = timeoutCts.Token;
+                }
             }
 
             using (token.Register(() =>
@@ -1178,6 +1173,7 @@ public class SerialPortRx : ISerialPortRx
                 {
                     subscription.Dispose();
                     timeoutCts?.Dispose();
+                    linkedCts?.Dispose();
                 }
             }
         }
@@ -1186,6 +1182,182 @@ public class SerialPortRx : ISerialPortRx
             _readLock.Release();
         }
     }
+
+    /// <summary>
+    /// Reads a string up to the specified value asynchronously.
+    /// </summary>
+    /// <param name="value">The value to read up to.</param>
+    /// <param name="cancellationToken">Cancellation token to cancel waiting.</param>
+    /// <returns>The contents of the input buffer up to the specified value.</returns>
+    public async Task<string> ReadToAsync(string value, CancellationToken cancellationToken = default)
+    {
+        EnsureOpen();
+
+#if NETFRAMEWORK
+        if (string.IsNullOrEmpty(value))
+        {
+            throw new ArgumentNullException(nameof(value));
+        }
+#else
+        ArgumentException.ThrowIfNullOrEmpty(value);
+#endif
+
+        await _readLock.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            var tcs = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
+            var sb = new StringBuilder(128);
+            var valueLength = value.Length;
+
+            var subscription = DataReceived.Subscribe(
+                ch =>
+                {
+                    sb.Append(ch);
+                    if (sb.Length >= valueLength && TryMatchSuffix(sb, value, valueLength))
+                    {
+                        sb.Length -= valueLength;
+                        tcs.TrySetResult(sb.ToString());
+                    }
+                },
+                ex => tcs.TrySetException(ex),
+                () => tcs.TrySetException(new InvalidOperationException("Serial port is not open.")));
+
+            CancellationTokenSource? timeoutCts = null;
+            CancellationTokenSource? linkedCts = null;
+            var token = cancellationToken;
+
+            if (ReadTimeout > 0)
+            {
+                timeoutCts = new CancellationTokenSource(ReadTimeout);
+                if (cancellationToken.CanBeCanceled)
+                {
+                    linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeoutCts.Token);
+                    token = linkedCts.Token;
+                }
+                else
+                {
+                    token = timeoutCts.Token;
+                }
+            }
+
+            using (token.Register(() =>
+            {
+                if (timeoutCts?.IsCancellationRequested == true && ReadTimeout > 0)
+                {
+                    tcs.TrySetException(new TimeoutException("ReadToAsync timed out."));
+                }
+                else
+                {
+                    tcs.TrySetCanceled(token);
+                }
+            }))
+            {
+                try
+                {
+                    return await tcs.Task.ConfigureAwait(false);
+                }
+                finally
+                {
+                    subscription.Dispose();
+                    timeoutCts?.Dispose();
+                    linkedCts?.Dispose();
+                }
+            }
+        }
+        finally
+        {
+            _readLock.Release();
+        }
+    }
+
+    /// <summary>
+    /// Starts continuous data reception that feeds both DataReceived and DataReceivedBytes observables.
+    /// Call this after Open() to enable reactive data streaming.
+    /// </summary>
+    /// <param name="pollingIntervalMs">Polling interval in milliseconds (default: 10ms).</param>
+    /// <returns>A disposable that stops the data reception when disposed.</returns>
+    public IDisposable StartDataReception(int pollingIntervalMs = 10)
+    {
+        if (!IsOpen)
+        {
+            throw new InvalidOperationException("Serial port must be open before starting data reception.");
+        }
+
+        var cts = new CancellationTokenSource();
+        var disposable = new CompositeDisposable();
+
+        _ = Task.Run(() => RunDataReceptionLoopAsync(pollingIntervalMs, cts.Token), cts.Token);
+
+        disposable.Add(Disposable.Create(() =>
+        {
+            cts.Cancel();
+            cts.Dispose();
+        }));
+
+        return disposable;
+    }
+
+#if !NETFRAMEWORK
+    /// <summary>
+    /// Writes the specified data from a ReadOnlySpan.
+    /// </summary>
+    /// <param name="data">The data to write.</param>
+    public void Write(ReadOnlySpan<byte> data)
+    {
+        if (data.IsEmpty)
+        {
+            return;
+        }
+
+        var array = ArrayPool<byte>.Shared.Rent(data.Length);
+        try
+        {
+            data.CopyTo(array);
+            _writeByte?.OnNext((array, 0, data.Length));
+        }
+        finally
+        {
+            ArrayPool<byte>.Shared.Return(array);
+        }
+    }
+
+    /// <summary>
+    /// Writes the specified data from a ReadOnlyMemory.
+    /// </summary>
+    /// <param name="data">The data to write.</param>
+    public void Write(ReadOnlyMemory<byte> data)
+    {
+        if (data.IsEmpty)
+        {
+            return;
+        }
+
+        Write(data.Span);
+    }
+
+    /// <summary>
+    /// Writes the specified character data from a ReadOnlySpan.
+    /// </summary>
+    /// <param name="data">The character data to write.</param>
+    public void Write(ReadOnlySpan<char> data)
+    {
+        if (data.IsEmpty)
+        {
+            return;
+        }
+
+        var array = ArrayPool<char>.Shared.Rent(data.Length);
+        try
+        {
+            data.CopyTo(array);
+            _writeChar?.OnNext((array, 0, data.Length));
+        }
+        finally
+        {
+            ArrayPool<char>.Shared.Return(array);
+        }
+    }
+#endif
 
     /// <summary>
     /// Releases unmanaged and - optionally - managed resources.
@@ -1200,8 +1372,10 @@ public class SerialPortRx : ISerialPortRx
         {
             if (disposing)
             {
+                _disposablePort?.Dispose();
                 _isOpenValue.Dispose();
                 _dataReceived.Dispose();
+                _dataReceivedBytes.Dispose();
                 _errors.Dispose();
                 _writeByte.Dispose();
                 _writeChar.Dispose();
@@ -1212,7 +1386,6 @@ public class SerialPortRx : ISerialPortRx
                 _readBytes.Dispose();
                 _bytesRead.Dispose();
                 _bytesReceived.Dispose();
-                _disposablePort?.Dispose();
                 _readLock.Dispose();
                 _pinChanged.Dispose();
             }
@@ -1221,11 +1394,261 @@ public class SerialPortRx : ISerialPortRx
         }
     }
 
+    /// <summary>
+    /// Attempts to extract a complete line from the StringBuilder, optimized for common cases.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static bool TryExtractLine(StringBuilder sb, string newLine, int newLineLength, char newLineFirstChar, char lastChar, out string line)
+    {
+        line = string.Empty;
+
+        // Fast path for single-character newline (most common: \n)
+        if (newLineLength == 1)
+        {
+            if (lastChar == newLineFirstChar)
+            {
+                sb.Length--;
+                line = sb.ToString();
+                sb.Clear();
+                return true;
+            }
+
+            return false;
+        }
+
+        // Multi-character newline handling
+        if (sb.Length < newLineLength)
+        {
+            return false;
+        }
+
+        // Fast path for two-character newline (\r\n)
+        if (newLineLength == 2)
+        {
+            var len = sb.Length;
+            if (sb[len - 2] == newLine[0] && sb[len - 1] == newLine[1])
+            {
+                sb.Length -= 2;
+                line = sb.ToString();
+                sb.Clear();
+                return true;
+            }
+
+            return false;
+        }
+
+        // General case for longer newlines
+        return TryExtractLineGeneral(sb, newLine, newLineLength, out line);
+    }
+
+    /// <summary>
+    /// General case line extraction for newlines longer than 2 characters.
+    /// </summary>
+    private static bool TryExtractLineGeneral(StringBuilder sb, string newLine, int newLineLength, out string line)
+    {
+        line = string.Empty;
+        var start = sb.Length - newLineLength;
+
+        // Use stackalloc for small newlines, ArrayPool for larger ones
+        if (newLineLength <= 256)
+        {
+            Span<char> tail = stackalloc char[newLineLength];
+            for (var i = 0; i < newLineLength; i++)
+            {
+                tail[i] = sb[start + i];
+            }
+
+            if (tail.SequenceEqual(newLine.AsSpan()))
+            {
+                sb.Length -= newLineLength;
+                line = sb.ToString();
+                sb.Clear();
+                return true;
+            }
+        }
+        else
+        {
+            var buffer = ArrayPool<char>.Shared.Rent(newLineLength);
+            try
+            {
+                var tail = buffer.AsSpan(0, newLineLength);
+                for (var i = 0; i < newLineLength; i++)
+                {
+                    tail[i] = sb[start + i];
+                }
+
+                if (tail.SequenceEqual(newLine.AsSpan()))
+                {
+                    sb.Length -= newLineLength;
+                    line = sb.ToString();
+                    sb.Clear();
+                    return true;
+                }
+            }
+            finally
+            {
+                ArrayPool<char>.Shared.Return(buffer);
+            }
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// Checks if the StringBuilder ends with the specified value.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static bool TryMatchSuffix(StringBuilder sb, string value, int valueLength)
+    {
+        var start = sb.Length - valueLength;
+        for (var i = 0; i < valueLength; i++)
+        {
+            if (sb[start + i] != value[i])
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
     private void EnsureOpen()
     {
-        if (!IsOpen)
+        if (!IsOpen && !IsDisposed)
         {
             throw new InvalidOperationException("Serial port is not open.");
+        }
+    }
+
+    /// <summary>
+    /// Creates a cached observable that is thread-safe and avoids repeated Publish/RefCount allocations.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private IObservable<T> GetOrCreateCachedObservable<T>(ref IObservable<T>? cached, ISubject<T> subject)
+    {
+        var current = Volatile.Read(ref cached);
+        if (current != null)
+        {
+            return current;
+        }
+
+        lock (_observableCacheLock)
+        {
+            current = Volatile.Read(ref cached);
+            if (current != null)
+            {
+                return current;
+            }
+
+            var observable = subject.Retry().Publish().RefCount();
+            Volatile.Write(ref cached, observable);
+            return observable;
+        }
+    }
+
+    /// <summary>
+    /// Creates a cached observable from a factory that is thread-safe.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private IObservable<T> GetOrCreateCachedObservable<T>(ref IObservable<T>? cached, Func<IObservable<T>> factory)
+    {
+        var current = Volatile.Read(ref cached);
+        if (current != null)
+        {
+            return current;
+        }
+
+        lock (_observableCacheLock)
+        {
+            current = Volatile.Read(ref cached);
+            if (current != null)
+            {
+                return current;
+            }
+
+            var observable = factory();
+            Volatile.Write(ref cached, observable);
+            return observable;
+        }
+    }
+
+    /// <summary>
+    /// Creates the optimized lines observable with efficient line parsing.
+    /// </summary>
+    private IObservable<string> CreateLinesObservable() =>
+        Observable.Defer(() =>
+            Observable.Create<string>(obs =>
+            {
+                var sb = new StringBuilder(256);
+                var newLineLocal = NewLine ?? "\n";
+                var newLineLength = newLineLocal.Length;
+                var newLineFirstChar = newLineLocal[0];
+
+                var sub = DataReceived.Subscribe(
+                    ch =>
+                    {
+                        sb.Append(ch);
+                        if (TryExtractLine(sb, newLineLocal, newLineLength, newLineFirstChar, ch, out var line))
+                        {
+                            obs.OnNext(line);
+                        }
+                    },
+                    obs.OnError);
+
+                return sub;
+            }))
+        .Publish()
+        .RefCount();
+
+    private async Task RunDataReceptionLoopAsync(int pollingIntervalMs, CancellationToken cancellationToken)
+    {
+        var buffer = ArrayPool<byte>.Shared.Rent(ReadBufferSize);
+        try
+        {
+            while (!cancellationToken.IsCancellationRequested && IsOpen)
+            {
+                try
+                {
+                    if (_serialPort?.BytesToRead > 0)
+                    {
+                        await _readLock.WaitAsync(cancellationToken).ConfigureAwait(false);
+                        try
+                        {
+                            var bytesToRead = Math.Min(_serialPort.BytesToRead, buffer.Length);
+                            if (bytesToRead > 0)
+                            {
+                                var bytesRead = _serialPort.Read(buffer, 0, bytesToRead);
+                                for (var i = 0; i < bytesRead; i++)
+                                {
+                                    var b = buffer[i];
+                                    _dataReceivedBytes.OnNext(b);
+                                    _dataReceived.OnNext((char)b);
+                                }
+                            }
+                        }
+                        finally
+                        {
+                            _readLock.Release();
+                        }
+                    }
+                    else
+                    {
+                        await Task.Delay(pollingIntervalMs, cancellationToken).ConfigureAwait(false);
+                    }
+                }
+                catch (OperationCanceledException)
+                {
+                    break;
+                }
+                catch (Exception ex)
+                {
+                    _errors.OnNext(ex);
+                }
+            }
+        }
+        finally
+        {
+            ArrayPool<byte>.Shared.Return(buffer);
         }
     }
 }
