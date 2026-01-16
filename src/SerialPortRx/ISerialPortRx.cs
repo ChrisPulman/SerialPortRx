@@ -27,15 +27,26 @@ public interface ISerialPortRx : IPortRx
     int DataBits { get; set; }
 
     /// <summary>
-    /// Gets the data received.
+    /// Gets the data received as characters.
     /// </summary>
     /// <value>The data received.</value>
     IObservable<char> DataReceived { get; }
 
     /// <summary>
-    /// Gets the error recived.
+    /// Gets the raw bytes received from the serial port.
     /// </summary>
-    /// <value>The error recived.</value>
+    /// <value>The raw bytes received.</value>
+    IObservable<byte> DataReceivedBytes { get; }
+
+    /// <summary>
+    /// Gets a lazily-created observable sequence of complete lines split by the NewLine sequence.
+    /// </summary>
+    IObservable<string> Lines { get; }
+
+    /// <summary>
+    /// Gets the error received.
+    /// </summary>
+    /// <value>The error received.</value>
     IObservable<Exception> ErrorReceived { get; }
 
 #if HasWindows
@@ -185,6 +196,15 @@ public interface ISerialPortRx : IPortRx
     int WriteBufferSize { get; set; }
 
     /// <summary>
+    /// Gets or sets a value indicating whether to automatically consume received data
+    /// and feed it to the DataReceived and DataReceivedBytes observables.
+    /// Set to false if you want to use synchronous Read methods instead.
+    /// Must be set before calling Open().
+    /// </summary>
+    /// <value>True to enable automatic data reception (default), false to use sync reads.</value>
+    bool EnableAutoDataReceive { get; set; }
+
+    /// <summary>
     /// Discards the out buffer.
     /// </summary>
     void DiscardOutBuffer();
@@ -282,4 +302,40 @@ public interface ISerialPortRx : IPortRx
     /// <param name="value">The value.</param>
     /// <returns>A string.</returns>
     string ReadTo(string value);
+
+    /// <summary>
+    /// Reads a string up to the specified value asynchronously.
+    /// </summary>
+    /// <param name="value">The value to read up to.</param>
+    /// <param name="cancellationToken">Cancellation token to cancel waiting.</param>
+    /// <returns>The contents of the input buffer up to the specified value.</returns>
+    Task<string> ReadToAsync(string value, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Starts continuous data reception that feeds both DataReceived and DataReceivedBytes observables.
+    /// Call this after Open() to enable reactive data streaming.
+    /// </summary>
+    /// <param name="pollingIntervalMs">Polling interval in milliseconds (default: 10ms).</param>
+    /// <returns>A disposable that stops the data reception when disposed.</returns>
+    IDisposable StartDataReception(int pollingIntervalMs = 10);
+
+#if !NETFRAMEWORK
+    /// <summary>
+    /// Writes the specified data from a ReadOnlySpan.
+    /// </summary>
+    /// <param name="data">The data to write.</param>
+    void Write(ReadOnlySpan<byte> data);
+
+    /// <summary>
+    /// Writes the specified data from a ReadOnlyMemory.
+    /// </summary>
+    /// <param name="data">The data to write.</param>
+    void Write(ReadOnlyMemory<byte> data);
+
+    /// <summary>
+    /// Writes the specified character data from a ReadOnlySpan.
+    /// </summary>
+    /// <param name="data">The character data to write.</param>
+    void Write(ReadOnlySpan<char> data);
+#endif
 }
