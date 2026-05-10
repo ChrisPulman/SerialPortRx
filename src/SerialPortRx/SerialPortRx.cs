@@ -16,6 +16,7 @@ using System.Runtime.CompilerServices;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using ReactiveUI.Extensions.Async;
 
 namespace CP.IO.Ports;
 
@@ -51,8 +52,15 @@ public class SerialPortRx : ISerialPortRx
     private IObservable<Exception>? _cachedErrorReceived;
     private IObservable<bool>? _cachedIsOpenObservable;
     private IObservable<string>? _lines;
+    private IObservableAsync<char>? _cachedDataReceivedAsync;
+    private IObservableAsync<byte>? _cachedDataReceivedBytesAsync;
+    private IObservableAsync<int>? _cachedBytesReceivedAsync;
+    private IObservableAsync<Exception>? _cachedErrorReceivedAsync;
+    private IObservableAsync<bool>? _cachedIsOpenObservableAsync;
+    private IObservableAsync<string>? _linesAsync;
 #if HasWindows
     private IObservable<SerialPinChangedEventArgs>? _cachedPinChanged;
+    private IObservableAsync<SerialPinChangedEventArgs>? _cachedPinChangedAsync;
 #endif
 
     private SerialPort? _serialPort;
@@ -186,16 +194,34 @@ public class SerialPortRx : ISerialPortRx
     public IObservable<char> DataReceived => GetOrCreateCachedObservable(ref _cachedDataReceived, _dataReceived);
 
     /// <summary>
+    /// Gets the data received as characters via an async observable.
+    /// </summary>
+    /// <value>The data received.</value>
+    public IObservableAsync<char> DataReceivedAsync => GetOrCreateCachedAsyncObservable(ref _cachedDataReceivedAsync, DataReceived);
+
+    /// <summary>
     /// Gets the raw bytes received from the serial port.
     /// </summary>
     /// <value>The raw bytes received.</value>
     public IObservable<byte> DataReceivedBytes => GetOrCreateCachedObservable(ref _cachedDataReceivedBytes, _dataReceivedBytes);
 
     /// <summary>
+    /// Gets the raw bytes received from the serial port via an async observable.
+    /// </summary>
+    /// <value>The raw bytes received.</value>
+    public IObservableAsync<byte> DataReceivedBytesAsync => GetOrCreateCachedAsyncObservable(ref _cachedDataReceivedBytesAsync, DataReceivedBytes);
+
+    /// <summary>
     /// Gets the data received when executing ReadAsync.
     /// </summary>
     /// <value>The data received.</value>
     public IObservable<int> BytesReceived => GetOrCreateCachedObservable(ref _cachedBytesReceived, _bytesReceived);
+
+    /// <summary>
+    /// Gets the data received when executing ReadAsync via an async observable.
+    /// </summary>
+    /// <value>The data received.</value>
+    public IObservableAsync<int> BytesReceivedAsync => GetOrCreateCachedAsyncObservable(ref _cachedBytesReceivedAsync, BytesReceived);
 
     /// <summary>
     /// Gets or sets the encoding.
@@ -213,6 +239,12 @@ public class SerialPortRx : ISerialPortRx
     public IObservable<Exception> ErrorReceived => GetOrCreateCachedObservable(
         ref _cachedErrorReceived,
         () => _errors.Distinct(ex => ex.Message).Retry().Publish().RefCount());
+
+    /// <summary>
+    /// Gets the error received via an async observable.
+    /// </summary>
+    /// <value>The error received.</value>
+    public IObservableAsync<Exception> ErrorReceivedAsync => GetOrCreateCachedAsyncObservable(ref _cachedErrorReceivedAsync, ErrorReceived);
 
     /// <summary>
     /// Gets or sets the handshake.
@@ -246,6 +278,12 @@ public class SerialPortRx : ISerialPortRx
     public IObservable<bool> IsOpenObservable => GetOrCreateCachedObservable(
         ref _cachedIsOpenObservable,
         () => _isOpenValue.DistinctUntilChanged());
+
+    /// <summary>
+    /// Gets the is open async observable.
+    /// </summary>
+    /// <value>The is open async observable.</value>
+    public IObservableAsync<bool> IsOpenObservableAsync => GetOrCreateCachedAsyncObservable(ref _cachedIsOpenObservableAsync, IsOpenObservable);
 
     /// <summary>
     /// Gets or sets the parity.
@@ -499,12 +537,25 @@ public class SerialPortRx : ISerialPortRx
     /// The pin changed.
     /// </value>
     public IObservable<SerialPinChangedEventArgs> PinChanged => GetOrCreateCachedObservable(ref _cachedPinChanged, _pinChanged);
+
+    /// <summary>
+    /// Gets the pin changed async observable.
+    /// </summary>
+    /// <value>
+    /// The pin changed async observable.
+    /// </value>
+    public IObservableAsync<SerialPinChangedEventArgs> PinChangedAsync => GetOrCreateCachedAsyncObservable(ref _cachedPinChangedAsync, PinChanged);
 #endif
 
     /// <summary>
     /// Gets a lazily-created observable sequence of complete lines split by the NewLine sequence.
     /// </summary>
     public IObservable<string> Lines => _lines ??= CreateLinesObservable();
+
+    /// <summary>
+    /// Gets a lazily-created async observable sequence of complete lines split by the NewLine sequence.
+    /// </summary>
+    public IObservableAsync<string> LinesAsync => _linesAsync ??= Lines.ToObservableAsync();
 
     private IObservable<Unit> Connect => Observable.Create<Unit>(obs =>
     {
@@ -1567,6 +1618,32 @@ public class SerialPortRx : ISerialPortRx
             }
 
             var observable = factory();
+            Volatile.Write(ref cached, observable);
+            return observable;
+        }
+    }
+
+    /// <summary>
+    /// Creates a cached async observable that is thread-safe.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private IObservableAsync<T> GetOrCreateCachedAsyncObservable<T>(ref IObservableAsync<T>? cached, IObservable<T> source)
+    {
+        var current = Volatile.Read(ref cached);
+        if (current != null)
+        {
+            return current;
+        }
+
+        lock (_observableCacheLock)
+        {
+            current = Volatile.Read(ref cached);
+            if (current != null)
+            {
+                return current;
+            }
+
+            var observable = source.ToObservableAsync();
             Volatile.Write(ref cached, observable);
             return observable;
         }
