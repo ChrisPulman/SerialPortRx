@@ -13,6 +13,7 @@ using System.Reactive.Subjects;
 using System.Threading;
 using System.Threading.Tasks;
 using ReactiveUI.Extensions;
+using ReactiveUI.Extensions.Async;
 
 namespace CP.IO.Ports;
 
@@ -27,6 +28,9 @@ public class UdpClientRx : IPortRx
     private readonly Subject<int> _bytesReceived = new();
     private readonly Subject<int> _dataReceived = new();
     private readonly Subject<byte[]> _dataChunks = new();
+    private IObservableAsync<int>? _dataReceivedAsync;
+    private IObservableAsync<byte[]>? _dataReceivedBatchesAsync;
+    private IObservableAsync<int>? _bytesReceivedAsync;
     private CompositeDisposable _disposablePort = [];
     private bool _disposedValue;
     private int _bufferOffset;
@@ -172,15 +176,32 @@ public class UdpClientRx : IPortRx
     public IObservable<int> DataReceived => _dataReceived.Retry().Publish().RefCount();
 
     /// <summary>
+    /// Gets the data received as an async observable.
+    /// </summary>
+    /// <value>The data received.</value>
+    public IObservableAsync<int> DataReceivedAsync => _dataReceivedAsync ??= DataReceived.ToObservableAsync();
+
+    /// <summary>
     /// Gets stream chunks (byte arrays) for each received UDP datagram.
     /// </summary>
     public IObservable<byte[]> DataReceivedBatches => _dataChunks.Retry().Publish().RefCount();
+
+    /// <summary>
+    /// Gets stream chunks for each received UDP datagram as an async observable.
+    /// </summary>
+    public IObservableAsync<byte[]> DataReceivedBatchesAsync => _dataReceivedBatchesAsync ??= DataReceivedBatches.ToObservableAsync();
 
     /// <summary>
     /// Gets the data received.
     /// </summary>
     /// <value>The data received.</value>
     public IObservable<int> BytesReceived => _bytesReceived.Retry().Publish().RefCount();
+
+    /// <summary>
+    /// Gets the data received from ReadAsync as an async observable.
+    /// </summary>
+    /// <value>The data received.</value>
+    public IObservableAsync<int> BytesReceivedAsync => _bytesReceivedAsync ??= BytesReceived.ToObservableAsync();
 
 #if HasWindows
     /// <summary>
