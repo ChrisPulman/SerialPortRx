@@ -3,13 +3,15 @@
 
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.IO.Ports;
 using System.Reactive.Disposables;
 using System.Reactive.Disposables.Fluent;
 using System.Reactive.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using NUnit.Framework;
+using TUnit.Assertions;
+using TUnit.Core;
 
 namespace CP.IO.Ports.Tests;
 
@@ -18,10 +20,9 @@ namespace CP.IO.Ports.Tests;
 /// These tests require virtual COM port pairs (COM1-COM2) to be set up.
 /// Use a tool like com0com or Virtual Serial Port Driver to create virtual port pairs.
 /// </summary>
-[TestFixture]
 [Category("Integration")]
-[NonParallelizable]
-public class SerialPortRxTests
+[NotInParallel]
+public sealed class SerialPortRxTests : IDisposable
 {
     private const string Port1Name = "COM1";
     private const string Port2Name = "COM2";
@@ -30,39 +31,63 @@ public class SerialPortRxTests
     private SerialPortRx? _port1;
     private SerialPortRx? _port2;
     private CompositeDisposable? _disposables;
+    private bool _disposed;
 
     /// <summary>
     /// Check if test ports are available before running tests.
     /// </summary>
-    [OneTimeSetUp]
-    public void OneTimeSetUp()
+    [Before(Class)]
+    public static void BeforeClass()
     {
         var availablePorts = SerialPort.GetPortNames();
         if (!Array.Exists(availablePorts, p => p.Equals(Port1Name, StringComparison.OrdinalIgnoreCase)) ||
             !Array.Exists(availablePorts, p => p.Equals(Port2Name, StringComparison.OrdinalIgnoreCase)))
         {
-            Assert.Ignore($"Test requires virtual COM port pair ({Port1Name} and {Port2Name}). " +
-                         "Use com0com or Virtual Serial Port Driver to create virtual ports.");
+            Skip.Test($"Test requires virtual COM port pair ({Port1Name} and {Port2Name}). " +
+                      "Use com0com or Virtual Serial Port Driver to create virtual ports.");
         }
     }
 
     /// <summary>
     /// Initializes resources required for each test.
     /// </summary>
-    [SetUp]
-    public void SetUp() => _disposables = new CompositeDisposable();
+    [Before(Test)]
+    public void BeforeTest() => _disposables = new CompositeDisposable();
 
     /// <summary>
     /// Performs cleanup operations after each test.
     /// </summary>
-    [TearDown]
-    public void TearDown()
+    /// <returns>A <see cref="Task"/> representing the asynchronous cleanup operation.</returns>
+    [After(Test)]
+    public async Task AfterTest()
     {
+        await Task.Delay(100);
+        DiscardBuffers(_port1);
+        DiscardBuffers(_port2);
+        _port1?.Close();
+        _port2?.Close();
+        Dispose();
+    }
+
+    /// <summary>
+    /// Releases resources used by the test instance.
+    /// </summary>
+    public void Dispose()
+    {
+        if (_disposed)
+        {
+            return;
+        }
+
+        DiscardBuffers(_port1);
+        DiscardBuffers(_port2);
         _port1?.Close();
         _port2?.Close();
         _port1?.Dispose();
         _port2?.Dispose();
         _disposables?.Dispose();
+        _disposed = true;
+        GC.SuppressFinalize(this);
     }
 
     /// <summary>
@@ -70,7 +95,7 @@ public class SerialPortRxTests
     /// </summary>
     /// <returns>A <see cref="Task"/> representing the asynchronous unit test.</returns>
     [Test]
-    [CancelAfter(5000)]
+    [Timeout(5000)]
     public async Task Open_WithValidPort_SetsIsOpenToTrue()
     {
         // Arrange
@@ -80,7 +105,7 @@ public class SerialPortRxTests
         await _port1.Open();
 
         // Assert
-        Assert.That(_port1.IsOpen, Is.True);
+        await Assert.That(_port1.IsOpen).IsTrue();
     }
 
     /// <summary>
@@ -88,7 +113,7 @@ public class SerialPortRxTests
     /// </summary>
     /// <returns>A <see cref="Task"/> representing the asynchronous unit test.</returns>
     [Test]
-    [CancelAfter(5000)]
+    [Timeout(5000)]
     public async Task Close_AfterOpen_SetsIsOpenToFalse()
     {
         // Arrange
@@ -99,7 +124,7 @@ public class SerialPortRxTests
         _port1.Close();
 
         // Assert
-        Assert.That(_port1.IsOpen, Is.False);
+        await Assert.That(_port1.IsOpen).IsFalse();
     }
 
     /// <summary>
@@ -107,7 +132,7 @@ public class SerialPortRxTests
     /// </summary>
     /// <returns>A <see cref="Task"/> representing the asynchronous unit test.</returns>
     [Test]
-    [CancelAfter(5000)]
+    [Timeout(5000)]
     public async Task IsOpenObservable_EmitsCorrectValues()
     {
         // Arrange
@@ -122,9 +147,9 @@ public class SerialPortRxTests
         await Task.Delay(100);
 
         // Assert
-        Assert.That(values, Has.Count.GreaterThanOrEqualTo(2));
-        Assert.That(values, Does.Contain(true));
-        Assert.That(values[^1], Is.False);
+        await Assert.That(values.Count).IsGreaterThanOrEqualTo(2);
+        await Assert.That(values).Contains(true);
+        await Assert.That(values[^1]).IsFalse();
     }
 
     /// <summary>
@@ -132,7 +157,7 @@ public class SerialPortRxTests
     /// </summary>
     /// <returns>A <see cref="Task"/> representing the asynchronous unit test.</returns>
     [Test]
-    [CancelAfter(5000)]
+    [Timeout(5000)]
     public async Task DataReceived_WhenDataWritten_EmitsReceivedCharacters()
     {
         // Arrange
@@ -160,8 +185,8 @@ public class SerialPortRxTests
         await Task.WhenAny(tcs.Task, Task.Delay(2000));
 
         // Assert
-        Assert.That(receivedChars.Count, Is.GreaterThanOrEqualTo(5));
-        Assert.That(string.Join(string.Empty, receivedChars), Does.StartWith("Hello"));
+        await Assert.That(receivedChars.Count).IsGreaterThanOrEqualTo(5);
+        await Assert.That(string.Join(string.Empty, receivedChars)).StartsWith("Hello");
     }
 
     /// <summary>
@@ -169,7 +194,7 @@ public class SerialPortRxTests
     /// </summary>
     /// <returns>A <see cref="Task"/> representing the asynchronous unit test.</returns>
     [Test]
-    [CancelAfter(5000)]
+    [Timeout(5000)]
     public async Task Lines_WhenLineWritten_EmitsCompleteLine()
     {
         // Arrange
@@ -194,7 +219,7 @@ public class SerialPortRxTests
         await Task.WhenAny(tcs.Task, Task.Delay(2000));
 
         // Assert
-        Assert.That(receivedLine, Is.EqualTo("Test Message"));
+        await Assert.That(receivedLine).IsEqualTo("Test Message");
     }
 
     /// <summary>
@@ -202,7 +227,7 @@ public class SerialPortRxTests
     /// </summary>
     /// <returns>A <see cref="Task"/> representing the asynchronous unit test.</returns>
     [Test]
-    [CancelAfter(5000)]
+    [Timeout(5000)]
     public async Task DataReceivedBytes_WhenBytesWritten_EmitsReceivedBytes()
     {
         // Arrange
@@ -230,10 +255,10 @@ public class SerialPortRxTests
         await Task.WhenAny(tcs.Task, Task.Delay(2000));
 
         // Assert
-        Assert.That(receivedBytes.Count, Is.GreaterThanOrEqualTo(3));
-        Assert.That(receivedBytes[0], Is.EqualTo(0x01));
-        Assert.That(receivedBytes[1], Is.EqualTo(0x02));
-        Assert.That(receivedBytes[2], Is.EqualTo(0x03));
+        await Assert.That(receivedBytes.Count).IsGreaterThanOrEqualTo(3);
+        await Assert.That(receivedBytes[0]).IsEqualTo((byte)0x01);
+        await Assert.That(receivedBytes[1]).IsEqualTo((byte)0x02);
+        await Assert.That(receivedBytes[2]).IsEqualTo((byte)0x03);
     }
 
     /// <summary>
@@ -241,7 +266,7 @@ public class SerialPortRxTests
     /// </summary>
     /// <returns>A <see cref="Task"/> representing the asynchronous unit test.</returns>
     [Test]
-    [CancelAfter(5000)]
+    [Timeout(5000)]
     public async Task ReadLine_WhenDataAvailable_ReturnsLine()
     {
         // Arrange - disable auto receive to use sync reads
@@ -258,7 +283,7 @@ public class SerialPortRxTests
         var line = _port2.ReadLine();
 
         // Assert
-        Assert.That(line, Is.EqualTo("Sync Test"));
+        await Assert.That(line).IsEqualTo("Sync Test");
     }
 
     /// <summary>
@@ -266,7 +291,7 @@ public class SerialPortRxTests
     /// </summary>
     /// <returns>A <see cref="Task"/> representing the asynchronous unit test.</returns>
     [Test]
-    [CancelAfter(5000)]
+    [Timeout(5000)]
     public async Task ReadExisting_WhenDataAvailable_ReturnsAllData()
     {
         // Arrange
@@ -283,7 +308,7 @@ public class SerialPortRxTests
         var data = _port2.ReadExisting();
 
         // Assert
-        Assert.That(data, Is.EqualTo("Test Data"));
+        await Assert.That(data).IsEqualTo("Test Data");
     }
 
     /// <summary>
@@ -291,7 +316,7 @@ public class SerialPortRxTests
     /// </summary>
     /// <returns>A <see cref="Task"/> representing the asynchronous unit test.</returns>
     [Test]
-    [CancelAfter(5000)]
+    [Timeout(5000)]
     public async Task Read_ByteArray_ReturnsCorrectBytes()
     {
         // Arrange
@@ -309,10 +334,10 @@ public class SerialPortRxTests
         var bytesRead = _port2.Read(buffer, 0, 3);
 
         // Assert
-        Assert.That(bytesRead, Is.EqualTo(3));
-        Assert.That(buffer[0], Is.EqualTo(65));
-        Assert.That(buffer[1], Is.EqualTo(66));
-        Assert.That(buffer[2], Is.EqualTo(67));
+        await Assert.That(bytesRead).IsEqualTo(3);
+        await Assert.That(buffer[0]).IsEqualTo((byte)65);
+        await Assert.That(buffer[1]).IsEqualTo((byte)66);
+        await Assert.That(buffer[2]).IsEqualTo((byte)67);
     }
 
     /// <summary>
@@ -320,7 +345,7 @@ public class SerialPortRxTests
     /// </summary>
     /// <returns>A <see cref="Task"/> representing the asynchronous unit test.</returns>
     [Test]
-    [CancelAfter(5000)]
+    [Timeout(5000)]
     public async Task ReadLineAsync_WhenDataAvailable_ReturnsLine()
     {
         // Arrange
@@ -348,7 +373,7 @@ public class SerialPortRxTests
         var line = await readTask;
 
         // Assert
-        Assert.That(line, Is.EqualTo(testMessage));
+        await Assert.That(line).IsEqualTo(testMessage);
     }
 
     /// <summary>
@@ -356,7 +381,7 @@ public class SerialPortRxTests
     /// </summary>
     /// <returns>A <see cref="Task"/> representing the asynchronous unit test.</returns>
     [Test]
-    [CancelAfter(5000)]
+    [Timeout(5000)]
     public async Task ReadLineAsync_WithCancellation_ThrowsOperationCanceled()
     {
         // Arrange
@@ -369,18 +394,8 @@ public class SerialPortRxTests
 
         using var cts = new CancellationTokenSource(500);
 
-        // Act & Assert - TaskCanceledException inherits from OperationCanceledException
-        Exception? caughtException = null;
-        try
-        {
-            await _port2.ReadLineAsync(cts.Token);
-        }
-        catch (Exception ex)
-        {
-            caughtException = ex;
-        }
-
-        Assert.That(caughtException, Is.InstanceOf<OperationCanceledException>());
+        // Act & Assert - TaskCanceledException inherits from OperationCanceledException.
+        await Assert.That(async () => await _port2.ReadLineAsync(cts.Token)).Throws<OperationCanceledException>();
     }
 
     /// <summary>
@@ -388,7 +403,7 @@ public class SerialPortRxTests
     /// </summary>
     /// <returns>A <see cref="Task"/> representing the asynchronous unit test.</returns>
     [Test]
-    [CancelAfter(5000)]
+    [Timeout(5000)]
     public async Task ReadToAsync_WhenDelimiterFound_ReturnsDataUpToDelimiter()
     {
         // Arrange
@@ -405,7 +420,7 @@ public class SerialPortRxTests
         var result = await _port2.ReadToAsync(">");
 
         // Assert
-        Assert.That(result, Is.EqualTo("Hello"));
+        await Assert.That(result).IsEqualTo("Hello");
     }
 
     /// <summary>
@@ -413,7 +428,7 @@ public class SerialPortRxTests
     /// </summary>
     /// <returns>A <see cref="Task"/> representing the asynchronous unit test.</returns>
     [Test]
-    [CancelAfter(5000)]
+    [Timeout(5000)]
     public async Task Write_String_DataReceivedOnOtherPort()
     {
         // Arrange
@@ -429,7 +444,7 @@ public class SerialPortRxTests
 
         // Assert
         var received = _port2.ReadExisting();
-        Assert.That(received, Is.EqualTo("Test String"));
+        await Assert.That(received).IsEqualTo("Test String");
     }
 
     /// <summary>
@@ -437,7 +452,7 @@ public class SerialPortRxTests
     /// </summary>
     /// <returns>A <see cref="Task"/> representing the asynchronous unit test.</returns>
     [Test]
-    [CancelAfter(5000)]
+    [Timeout(5000)]
     public async Task WriteLine_AddsNewLine()
     {
         // Arrange
@@ -453,7 +468,7 @@ public class SerialPortRxTests
 
         // Assert
         var received = _port2.ReadExisting();
-        Assert.That(received, Is.EqualTo("Test\n"));
+        await Assert.That(received).IsEqualTo("Test\n");
     }
 
     /// <summary>
@@ -461,7 +476,7 @@ public class SerialPortRxTests
     /// </summary>
     /// <returns>A <see cref="Task"/> representing the asynchronous unit test.</returns>
     [Test]
-    [CancelAfter(5000)]
+    [Timeout(5000)]
     public async Task Write_ByteArray_DataReceivedCorrectly()
     {
         // Arrange
@@ -488,11 +503,11 @@ public class SerialPortRxTests
         var bytesRead = _port2.Read(buffer, 0, 4);
 
         // Assert
-        Assert.That(bytesRead, Is.EqualTo(4));
-        Assert.That(buffer[0], Is.EqualTo(0xAA));
-        Assert.That(buffer[1], Is.EqualTo(0xBB));
-        Assert.That(buffer[2], Is.EqualTo(0xCC));
-        Assert.That(buffer[3], Is.EqualTo(0xDD));
+        await Assert.That(bytesRead).IsEqualTo(4);
+        await Assert.That(buffer[0]).IsEqualTo((byte)0xAA);
+        await Assert.That(buffer[1]).IsEqualTo((byte)0xBB);
+        await Assert.That(buffer[2]).IsEqualTo((byte)0xCC);
+        await Assert.That(buffer[3]).IsEqualTo((byte)0xDD);
     }
 
     /// <summary>
@@ -500,7 +515,7 @@ public class SerialPortRxTests
     /// </summary>
     /// <returns>A <see cref="Task"/> representing the asynchronous unit test.</returns>
     [Test]
-    [CancelAfter(5000)]
+    [Timeout(5000)]
     public async Task Write_CharArray_DataReceivedCorrectly()
     {
         // Arrange
@@ -518,31 +533,32 @@ public class SerialPortRxTests
 
         // Assert
         var received = _port2.ReadExisting();
-        Assert.That(received, Is.EqualTo("ABC"));
+        await Assert.That(received).IsEqualTo("ABC");
     }
 
     /// <summary>
     /// Verifies default property values.
     /// </summary>
+    /// <returns>A <see cref="Task"/> representing the asynchronous unit test.</returns>
     [Test]
-    public void DefaultValues_AreSetCorrectly()
+    public async Task DefaultValues_AreSetCorrectly()
     {
         // Arrange & Act
         var port = new SerialPortRx();
 
         // Assert
-        Assert.Multiple(() =>
+        using (Assert.Multiple())
         {
-            Assert.That(port.BaudRate, Is.EqualTo(9600));
-            Assert.That(port.DataBits, Is.EqualTo(8));
-            Assert.That(port.Parity, Is.EqualTo(Parity.None));
-            Assert.That(port.StopBits, Is.EqualTo(StopBits.One));
-            Assert.That(port.Handshake, Is.EqualTo(Handshake.None));
-            Assert.That(port.NewLine, Is.EqualTo("\n"));
-            Assert.That(port.ReadTimeout, Is.EqualTo(-1));
-            Assert.That(port.WriteTimeout, Is.EqualTo(-1));
-            Assert.That(port.EnableAutoDataReceive, Is.True);
-        });
+            await Assert.That(port.BaudRate).IsEqualTo(9600);
+            await Assert.That(port.DataBits).IsEqualTo(8);
+            await Assert.That(port.Parity).IsEqualTo(Parity.None);
+            await Assert.That(port.StopBits).IsEqualTo(StopBits.One);
+            await Assert.That(port.Handshake).IsEqualTo(Handshake.None);
+            await Assert.That(port.NewLine).IsEqualTo("\n");
+            await Assert.That(port.ReadTimeout).IsEqualTo(-1);
+            await Assert.That(port.WriteTimeout).IsEqualTo(-1);
+            await Assert.That(port.EnableAutoDataReceive).IsTrue();
+        }
 
         port.Dispose();
     }
@@ -550,22 +566,23 @@ public class SerialPortRxTests
     /// <summary>
     /// Verifies constructor with all parameters.
     /// </summary>
+    /// <returns>A <see cref="Task"/> representing the asynchronous unit test.</returns>
     [Test]
-    public void Constructor_WithAllParameters_SetsValuesCorrectly()
+    public async Task Constructor_WithAllParameters_SetsValuesCorrectly()
     {
         // Arrange & Act
         var port = new SerialPortRx("COM3", 115200, 7, Parity.Even, StopBits.Two, Handshake.RequestToSend);
 
         // Assert
-        Assert.Multiple(() =>
+        using (Assert.Multiple())
         {
-            Assert.That(port.PortName, Is.EqualTo("COM3"));
-            Assert.That(port.BaudRate, Is.EqualTo(115200));
-            Assert.That(port.DataBits, Is.EqualTo(7));
-            Assert.That(port.Parity, Is.EqualTo(Parity.Even));
-            Assert.That(port.StopBits, Is.EqualTo(StopBits.Two));
-            Assert.That(port.Handshake, Is.EqualTo(Handshake.RequestToSend));
-        });
+            await Assert.That(port.PortName).IsEqualTo("COM3");
+            await Assert.That(port.BaudRate).IsEqualTo(115200);
+            await Assert.That(port.DataBits).IsEqualTo(7);
+            await Assert.That(port.Parity).IsEqualTo(Parity.Even);
+            await Assert.That(port.StopBits).IsEqualTo(StopBits.Two);
+            await Assert.That(port.Handshake).IsEqualTo(Handshake.RequestToSend);
+        }
 
         port.Dispose();
     }
@@ -575,51 +592,43 @@ public class SerialPortRxTests
     /// </summary>
     /// <returns>A <see cref="Task"/> representing the asynchronous unit test.</returns>
     [Test]
-    [CancelAfter(5000)]
+    [Timeout(5000)]
     public async Task Open_WithNonExistentPort_ThrowsException()
     {
         // Arrange
         _port1 = new SerialPortRx("COMNONEXISTENT", DefaultBaudRate);
 
-        // Act & Assert - Open throws for non-existent port
-        Exception? caughtException = null;
-        try
-        {
-            await _port1.Open();
-        }
-        catch (Exception ex)
-        {
-            caughtException = ex;
-        }
-
-        Assert.That(caughtException, Is.Not.Null);
-        Assert.That(_port1.IsOpen, Is.False);
+        // Act & Assert - Open throws for non-existent port.
+        await Assert.That(async () => await _port1.Open()).Throws<Exception>();
+        await Assert.That(_port1.IsOpen).IsFalse();
     }
 
     /// <summary>
     /// Verifies that ReadLine throws when port is not open.
     /// </summary>
+    /// <returns>A <see cref="Task"/> representing the asynchronous unit test.</returns>
     [Test]
-    public void ReadLine_WhenPortNotOpen_ThrowsInvalidOperationException()
+    public async Task ReadLine_WhenPortNotOpen_ThrowsInvalidOperationException()
     {
         // Arrange
         _port1 = new SerialPortRx(Port1Name, DefaultBaudRate);
 
         // Act & Assert
-        Assert.Throws<InvalidOperationException>(() => _port1.ReadLine());
+        await Assert.That(() => _port1.ReadLine()).Throws<InvalidOperationException>();
     }
 
     /// <summary>
     /// Verifies that ReadExisting throws when port is not open.
     /// </summary>
+    /// <returns>A <see cref="Task"/> representing the asynchronous unit test.</returns>
     [Test]
-    public void ReadExisting_WhenPortNotOpen_ThrowsInvalidOperationException()
+    public async Task ReadExisting_WhenPortNotOpen_ThrowsInvalidOperationException()
     {
         // Arrange
         _port1 = new SerialPortRx(Port1Name, DefaultBaudRate);
 
         // Act & Assert
-        Assert.Throws<InvalidOperationException>(() => _port1.ReadExisting());
+        await Assert.That(() => _port1.ReadExisting()).Throws<InvalidOperationException>();
     }
 
     /// <summary>
@@ -627,7 +636,7 @@ public class SerialPortRxTests
     /// </summary>
     /// <returns>A <see cref="Task"/> representing the asynchronous unit test.</returns>
     [Test]
-    [CancelAfter(5000)]
+    [Timeout(5000)]
     public async Task PortNames_ReturnsAvailablePorts()
     {
         // Arrange
@@ -644,8 +653,8 @@ public class SerialPortRxTests
         await Task.WhenAny(tcs.Task, Task.Delay(2000));
 
         // Assert
-        Assert.That(receivedPorts, Has.Count.GreaterThanOrEqualTo(1));
-        Assert.That(receivedPorts[0], Does.Contain(Port1Name).Or.Contain(Port2Name));
+        await Assert.That(receivedPorts.Count).IsGreaterThanOrEqualTo(1);
+        await Assert.That(receivedPorts[0]).Contains(Port1Name).Or.Contains(Port2Name);
     }
 
     /// <summary>
@@ -653,7 +662,7 @@ public class SerialPortRxTests
     /// </summary>
     /// <returns>A <see cref="Task"/> representing the asynchronous unit test.</returns>
     [Test]
-    [CancelAfter(5000)]
+    [Timeout(5000)]
     public async Task Dispose_ClosesPortAndSetsIsDisposed()
     {
         // Arrange
@@ -664,25 +673,46 @@ public class SerialPortRxTests
         _port1.Dispose();
 
         // Assert
-        Assert.That(_port1.IsDisposed, Is.True);
-        Assert.That(_port1.IsOpen, Is.False);
+        await Assert.That(_port1.IsDisposed).IsTrue();
+        await Assert.That(_port1.IsOpen).IsFalse();
     }
 
     /// <summary>
     /// Verifies that Dispose can be called multiple times.
     /// </summary>
+    /// <returns>A <see cref="Task"/> representing the asynchronous unit test.</returns>
     [Test]
-    public void Dispose_CanBeCalledMultipleTimes()
+    public async Task Dispose_CanBeCalledMultipleTimes()
     {
         // Arrange
         _port1 = new SerialPortRx(Port1Name, DefaultBaudRate);
 
         // Act & Assert - should not throw
-        Assert.DoesNotThrow(() =>
+        await Assert.That(() =>
         {
             _port1.Dispose();
             _port1.Dispose();
             _port1.Dispose();
-        });
+        }).ThrowsNothing();
+    }
+
+    private static void DiscardBuffers(SerialPortRx? port)
+    {
+        if (port?.IsOpen != true)
+        {
+            return;
+        }
+
+        try
+        {
+            port.DiscardInBuffer();
+            port.DiscardOutBuffer();
+        }
+        catch (InvalidOperationException)
+        {
+        }
+        catch (IOException)
+        {
+        }
     }
 }

@@ -13,6 +13,16 @@
     <!-- Explicitly reference the core Rx package for reliability across TFMs -->
     <PackageReference Include="System.Reactive" Version="6.1.0" />
   </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\SerialPortRx.SourceGenerators\SerialPortRx.SourceGenerators.csproj"
+                      ReferenceOutputAssembly="false"
+                      PrivateAssets="all" />
+    <None Include="..\SerialPortRx.SourceGenerators\bin\$(Configuration)\netstandard2.0\SerialPortRx.SourceGenerators.dll"
+          Pack="true"
+          PackagePath="analyzers/dotnet/cs/"
+          Visible="false" />
+  </ItemGroup>
   
   <ItemGroup Condition="$(TargetFramework.StartsWith('net4'))">
     <PackageReference Include="PolySharp" Version="1.15.0">

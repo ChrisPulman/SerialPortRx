@@ -14,7 +14,7 @@
     <NoWarn>$(NoWarn);CS1591;IDE0190;IDE1006;SA1010</NoWarn>
     <Nullable>enable</Nullable>
     <PackageIcon>logo.png</PackageIcon>
-    <PackageReleaseNotes>Compatability with Net 8/ 9/ 10 and netstandard2.0</PackageReleaseNotes>
+    <PackageReleaseNotes>Compatibility with .NET 8/9/10, TUnit/MTP tests, async observable bridges, and serial reactive stream source generation.</PackageReleaseNotes>
     <PackageTags>SerialPort;rx;reactive;extensions;observable;LINQ;net;netstandard</PackageTags>
     <EnableNETAnalyzers>True</EnableNETAnalyzers>
     <AnalysisLevel>latest</AnalysisLevel>

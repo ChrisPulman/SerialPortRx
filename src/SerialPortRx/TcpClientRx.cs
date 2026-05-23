@@ -12,6 +12,7 @@ using System.Reactive.Subjects;
 using System.Threading;
 using System.Threading.Tasks;
 using ReactiveUI.Extensions;
+using ReactiveUI.Extensions.Async;
 
 namespace CP.IO.Ports;
 
@@ -24,6 +25,9 @@ public class TcpClientRx : IPortRx
     private readonly Subject<int> _bytesReceived = new();
     private readonly Subject<int> _dataReceived = new();
     private readonly Subject<byte[]> _dataChunks = new();
+    private IObservableAsync<int>? _dataReceivedAsync;
+    private IObservableAsync<byte[]>? _dataReceivedBatchesAsync;
+    private IObservableAsync<int>? _bytesReceivedAsync;
     private CompositeDisposable _disposablePort = [];
     private bool _disposedValue;
 
@@ -115,15 +119,32 @@ public class TcpClientRx : IPortRx
     public IObservable<int> DataReceived => _dataReceived.Retry().Publish().RefCount();
 
     /// <summary>
+    /// Gets the data received after calling Open as an async observable.
+    /// </summary>
+    /// <value>The data received.</value>
+    public IObservableAsync<int> DataReceivedAsync => _dataReceivedAsync ??= DataReceived.ToObservableAsync();
+
+    /// <summary>
     /// Gets stream chunks (byte arrays) produced by the internal read loop.
     /// </summary>
     public IObservable<byte[]> DataReceivedBatches => _dataChunks.Retry().Publish().RefCount();
+
+    /// <summary>
+    /// Gets stream chunks produced by the internal read loop as an async observable.
+    /// </summary>
+    public IObservableAsync<byte[]> DataReceivedBatchesAsync => _dataReceivedBatchesAsync ??= DataReceivedBatches.ToObservableAsync();
 
     /// <summary>
     /// Gets the data received From ReadAsync.
     /// </summary>
     /// <value>The data received.</value>
     public IObservable<int> BytesReceived => _bytesReceived.Retry().Publish().RefCount();
+
+    /// <summary>
+    /// Gets the data received from ReadAsync as an async observable.
+    /// </summary>
+    /// <value>The data received.</value>
+    public IObservableAsync<int> BytesReceivedAsync => _bytesReceivedAsync ??= BytesReceived.ToObservableAsync();
 
     /// <summary>
     /// Connects the specified hostname.

@@ -16,10 +16,16 @@ A Reactive Serial, TCP, and UDP I/O library that exposes incoming data as IObser
   - IsOpenObservable: IObservable<bool> for connection state
   - ErrorReceived: IObservable<Exception> for errors
   - PinChanged: IObservable<SerialPinChangedEventArgs> for pin state changes (Windows only)
+- Async observables:
+  - Concrete serial, TCP, and UDP types expose IObservableAsync<T> counterparts.
+  - IPortRx and ISerialPortRx extension methods bridge existing streams to IObservableAsync<T>.
+  - SerialPortRx helpers include async BufferUntil, WhileIsOpenAsync, and PortNamesAsync variants.
 - Synchronous read methods for manual data consumption
 - TCP/UDP batched reads:
   - TcpClientRx.DataReceivedBatches: IObservable<byte[]> chunks per read loop
   - UdpClientRx.DataReceivedBatches: IObservable<byte[]> per received datagram
+- Source generator support:
+  - SerialPortReactiveStream attributes generate properties, IObservable<T>, IObservableAsync<T>, and a connection method for serial protocol values.
 - Helpers:
   - PortNames(): reactive port enumeration with change notifications
   - BufferUntil(): message framing between start and end delimiters with timeout
@@ -28,6 +34,8 @@ A Reactive Serial, TCP, and UDP I/O library that exposes incoming data as IObser
 
 ## Installation
 - dotnet add package SerialPortRx
+
+The package includes the SerialPortRx source generator as an analyzer. No separate generator package is required.
 
 ## Supported target frameworks
 - netstandard2.0
@@ -93,6 +101,54 @@ SerialPortRx.PortNames()
     })
     .ForEach()
     .Subscribe();
+```
+
+## Async observables
+SerialPortRx uses ReactiveUI.Extensions async observables for consumers that need asynchronous observer callbacks and full `IObservableAsync<T>` operators.
+
+```csharp
+using CP.IO.Ports;
+using ReactiveUI.Extensions.Async;
+
+var port = new SerialPortRx("COM3", 115200);
+
+await using var lines = await port.LinesAsync.SubscribeAsync(
+    async (line, cancellationToken) =>
+    {
+        await ProcessLineAsync(line, cancellationToken);
+    });
+
+await port.Open();
+```
+
+Concrete types expose async properties:
+- `SerialPortRx.DataReceivedAsync`, `DataReceivedBytesAsync`, `LinesAsync`, `BytesReceivedAsync`, `IsOpenObservableAsync`, `ErrorReceivedAsync`
+- `TcpClientRx.DataReceivedAsync`, `DataReceivedBatchesAsync`, `BytesReceivedAsync`
+- `UdpClientRx.DataReceivedAsync`, `DataReceivedBatchesAsync`, `BytesReceivedAsync`
+
+Interface consumers can use extension methods without requiring a new interface contract:
+```csharp
+ISerialPortRx serial = port;
+await using var state = await serial.IsOpenObservableAsync()
+    .WhereTrue()
+    .SubscribeAsync(_ => Console.WriteLine("Open"));
+
+IPortRx common = port;
+await using var bytes = await common.BytesReceivedAsync()
+    .SubscribeAsync(value => Console.WriteLine(value));
+```
+
+Async helper variants are also available:
+```csharp
+var start = 0x21.AsObservableAsync();
+var end = 0x0a.AsObservableAsync();
+
+await using var framed = await port.DataReceivedAsync
+    .BufferUntil(start, end, timeOut: 100)
+    .SubscribeAsync(message => Console.WriteLine(message));
+
+await using var names = await SerialPortRxMixins.PortNamesAsync()
+    .SubscribeAsync(ports => Console.WriteLine(string.Join(", ", ports)));
 ```
 
 ## Message framing with BufferUntil
@@ -232,6 +288,40 @@ port.NewLine = "\n";
 port.Lines.Subscribe(line => Console.WriteLine($"LINE: {line}"));
 ```
 
+## Source-generated serial properties
+The package includes a source generator that can turn serial protocol messages into strongly typed properties with classic and async observable streams. Mark a partial class with one or more `SerialPortReactiveStream` attributes, then connect it to an `ISerialPortRx`.
+
+```csharp
+using CP.IO.Ports;
+using CP.IO.Ports.SourceGeneration;
+using ReactiveUI.Extensions.Async;
+
+[SerialPortReactiveStream("Temperature", typeof(double), @"^TEMP:(?<value>-?\d+(\.\d+)?)$")]
+[SerialPortReactiveStream("DeviceReady", typeof(bool), @"^READY:(?<value>0|1)$", IgnoreCase = true)]
+public partial class DeviceState
+{
+}
+
+var port = new SerialPortRx("COM3", 115200);
+var state = new DeviceState();
+using var generatedBindings = state.ConnectReactiveSerialPort(port);
+
+state.TemperatureObservable.Subscribe(value => Console.WriteLine($"Temperature: {value}"));
+
+await using var ready = await state.DeviceReadyObservableAsync
+    .SubscribeAsync(value => Console.WriteLine($"Ready: {value}"));
+
+await port.Open();
+```
+
+Generated members:
+- `Temperature` and `DeviceReady` properties with private setters
+- `TemperatureObservable` / `DeviceReadyObservable`
+- `TemperatureObservableAsync` / `DeviceReadyObservableAsync`
+- `ConnectReactiveSerialPort(ISerialPortRx serialPort)` to wire the generated bindings
+
+By default, generated bindings listen to `ISerialPortRx.Lines`. Set `Source` to `SerialPortReactiveSource.DataReceived`, `DataReceivedBytes`, `BytesReceived`, or `IsOpen` when a property should be driven by a different stream.
+
 ## Writing
 - `port.Write(string text)` - Write a string
 - `port.WriteLine(string text)` - Write a string followed by NewLine
@@ -317,6 +407,15 @@ new TcpClientRx("example.com", 80).DataReceivedBatches
 new UdpClientRx(12345).DataReceivedBatches
     .Subscribe(datagram => Console.WriteLine($"UDP datagram size: {datagram.Length}"));
 ```
+
+## Testing
+The test suite uses TUnit on Microsoft.Testing.Platform. Run it with:
+
+```bash
+dotnet test --project src/SerialPortRx.Test/SerialPortRx.Test.csproj -c Debug -f net8.0
+```
+
+Serial integration tests expect a virtual COM port pair named `COM1` and `COM2`. The source-generator tests do not require serial hardware.
 
 ## Threading and scheduling
 - The DataReceived and other streams run on the underlying event threads. Use ObserveOn to marshal to a UI or a dedicated scheduler when needed.
