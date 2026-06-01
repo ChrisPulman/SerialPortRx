@@ -606,11 +606,16 @@ public class SerialPortRx : ISerialPortRx
             }
             catch (Exception ex)
             {
-                _errors.OnNext(ex);
-                obs.OnCompleted();
+                ReportError(ex);
+                obs.OnError(ex);
+                return dis;
             }
 
-            _isOpenValue.OnNext(port.IsOpen);
+            TryPublishIsOpen(port.IsOpen);
+            if (port.IsOpen)
+            {
+                obs.OnNext(Unit.Default);
+            }
 
             // Clear any existing buffers
             if (IsOpen)
@@ -622,7 +627,7 @@ public class SerialPortRx : ISerialPortRx
             Thread.Sleep(50);
 
             // Subscribe to port errors
-            dis.Add(port.ErrorReceivedObserver().Subscribe(e => obs.OnError(new Exception(e.EventArgs.EventType.ToString()))));
+            dis.Add(port.ErrorReceivedObserver().Subscribe(e => ReportError(new Exception(e.EventArgs.EventType.ToString()))));
 
             // Get the stream of data from the serial port using the DataReceived event
             // Only subscribe if EnableAutoDataReceive is true (allows sync reads when false)
@@ -664,10 +669,10 @@ public class SerialPortRx : ISerialPortRx
                     }
                     catch (Exception ex)
                     {
-                        obs.OnError(ex);
+                        ReportError(ex);
                     }
                 },
-                obs.OnError));
+                ex => ReportError(ex)));
             dis.Add(_writeStringLine.Subscribe(
                 x =>
                 {
@@ -677,10 +682,10 @@ public class SerialPortRx : ISerialPortRx
                     }
                     catch (Exception ex)
                     {
-                        obs.OnError(ex);
+                        ReportError(ex);
                     }
                 },
-                obs.OnError));
+                ex => ReportError(ex)));
             dis.Add(_writeByte.Subscribe(
                 x =>
                 {
@@ -690,10 +695,10 @@ public class SerialPortRx : ISerialPortRx
                     }
                     catch (Exception ex)
                     {
-                        obs.OnError(ex);
+                        ReportError(ex);
                     }
                 },
-                obs.OnError));
+                ex => ReportError(ex)));
             dis.Add(_writeChar.Subscribe(
                 x =>
                 {
@@ -703,10 +708,10 @@ public class SerialPortRx : ISerialPortRx
                     }
                     catch (Exception ex)
                     {
-                        obs.OnError(ex);
+                        ReportError(ex);
                     }
                 },
-                obs.OnError));
+                ex => ReportError(ex)));
             dis.Add(_discardInBuffer.Subscribe(
                 _ =>
                 {
@@ -716,10 +721,10 @@ public class SerialPortRx : ISerialPortRx
                     }
                     catch (Exception ex)
                     {
-                        obs.OnError(ex);
+                        ReportError(ex);
                     }
                 },
-                obs.OnError));
+                ex => ReportError(ex)));
             dis.Add(_discardOutBuffer.Subscribe(
                 _ =>
                 {
@@ -729,10 +734,10 @@ public class SerialPortRx : ISerialPortRx
                     }
                     catch (Exception ex)
                     {
-                        obs.OnError(ex);
+                        ReportError(ex);
                     }
                 },
-                obs.OnError));
+                ex => ReportError(ex)));
             dis.Add(_readBytes.Subscribe(
                 async x =>
                 {
@@ -769,21 +774,21 @@ public class SerialPortRx : ISerialPortRx
                     }
                     catch (Exception ex)
                     {
-                        obs.OnError(ex);
+                        ReportError(ex);
                     }
                     finally
                     {
                         _readLock.Release();
                     }
                 },
-                obs.OnError));
+                ex => ReportError(ex)));
         }
 
         return Disposable.Create(() =>
         {
             if (!IsDisposed)
             {
-                _isOpenValue.OnNext(false);
+                TryPublishIsOpen(false);
                 _serialPort = null;
                 dis.Dispose();
             }
@@ -871,7 +876,29 @@ public class SerialPortRx : ISerialPortRx
             _disposablePort = [];
         }
 
-        return _disposablePort?.Count == 0 ? Task.Run(() => Connect.Subscribe().DisposeWith(_disposablePort)) : Task.CompletedTask;
+        if (_disposablePort?.Count != 0)
+        {
+            return Task.CompletedTask;
+        }
+
+        var opened = new TaskCompletionSource<object?>(TaskCreationOptions.RunContinuationsAsynchronously);
+        Connect.Subscribe(
+            _ => opened.TrySetResult(null),
+            ex =>
+            {
+                ReportError(ex);
+                opened.TrySetException(ex);
+            },
+            () =>
+            {
+                if (IsOpen)
+                {
+                    opened.TrySetResult(null);
+                }
+            })
+            .DisposeWith(_disposablePort);
+
+        return opened.Task;
     }
 
     /// <summary>
@@ -1568,6 +1595,44 @@ public class SerialPortRx : ISerialPortRx
         if (!IsOpen && !IsDisposed)
         {
             throw new InvalidOperationException("Serial port is not open.");
+        }
+    }
+
+    private void ReportError(Exception exception)
+    {
+        if (IsDisposed)
+        {
+            return;
+        }
+
+        try
+        {
+            _errors.OnNext(exception);
+        }
+        catch (ObjectDisposedException)
+        {
+        }
+        catch (InvalidOperationException)
+        {
+        }
+    }
+
+    private void TryPublishIsOpen(bool isOpen)
+    {
+        if (IsDisposed)
+        {
+            return;
+        }
+
+        try
+        {
+            _isOpenValue.OnNext(isOpen);
+        }
+        catch (ObjectDisposedException)
+        {
+        }
+        catch (InvalidOperationException)
+        {
         }
     }
 
