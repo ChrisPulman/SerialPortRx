@@ -44,7 +44,7 @@
     <!-- Windows-only .NET Framework TFMs - only included on Windows builds -->
     <NetFrameworkTargetFrameworks Condition="$([MSBuild]::IsOsPlatform('Windows'))">net462;net472;net481;net8.0-windows10.0.19041.0;net9.0-windows10.0.19041.0;net10.0-windows10.0.19041.0</NetFrameworkTargetFrameworks>
 
-    <!-- Library projects: netstandard2.0, net462, net472, net8.0, net9.0, net10.0 -->
+    <!-- Library projects: net8.0, net9.0, net10.0, and Windows-only framework/platform TFMs when building on Windows -->
     <LibraryTargetFrameworks>$(NetCoreTargetFrameworks)</LibraryTargetFrameworks>
     <LibraryTargetFrameworks Condition="'$(NetFrameworkTargetFrameworks)' != ''">$(LibraryTargetFrameworks);$(NetFrameworkTargetFrameworks)</LibraryTargetFrameworks>
   </PropertyGroup>
@@ -65,9 +65,8 @@
 
   <ItemGroup>
     <!--<Compile Update="**\*.cs" DependentUpon="I%(Filename).cs" />-->
+    <PackageReference Include="StyleSharp.Analyzers" Version="3.13.4" PrivateAssets="all"/>
     <PackageReference Include="Nerdbank.GitVersioning" Version="3.10.85" PrivateAssets="all" />
-    <PackageReference Include="stylecop.analyzers" Version="1.2.0-beta.556" PrivateAssets="all" />
     <PackageReference Include="Roslynator.Analyzers" Version="4.15.0" PrivateAssets="All" />
-    <AdditionalFiles Include="$(MSBuildThisFileDirectory)stylecop.json" Link="stylecop.json" />
   </ItemGroup>
 </Project>

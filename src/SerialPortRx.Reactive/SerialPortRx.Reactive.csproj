@@ -1,17 +1,29 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <TargetFrameworks>$(LibraryTargetFrameworks)</TargetFrameworks>
     <RootNamespace>CP.IO.Ports</RootNamespace>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <DefineConstants>$(DefineConstants);REACTIVE_SHIM</DefineConstants>
     <NoWarn>$(NoWarn);RCS1047</NoWarn>
   </PropertyGroup>
+
   <PropertyGroup Condition="$(TargetFramework.EndsWith('-windows10.0.19041.0')) or $(TargetFramework.StartsWith('net4'))">
-    <DefineConstants>HasWindows</DefineConstants>
+    <DefineConstants>$(DefineConstants);HasWindows</DefineConstants>
   </PropertyGroup>
-  
+
+  <ItemGroup>
+    <Compile Include="..\SerialPortRx\**\*.cs"
+             Exclude="..\SerialPortRx\bin\**;..\SerialPortRx\obj\**"
+             Link="%(RecursiveDir)%(Filename)%(Extension)" />
+  </ItemGroup>
+
   <ItemGroup>
     <PackageReference Include="ReactiveUI.Primitives" Version="5.7.0" ExcludeAssets="analyzers" />
     <PackageReference Include="ReactiveUI.Primitives.Async" Version="5.7.0" ExcludeAssets="analyzers" />
     <PackageReference Include="ReactiveUI.Primitives.Extensions" Version="5.7.0" ExcludeAssets="analyzers" />
+    <PackageReference Include="ReactiveUI.Primitives.Reactive" Version="5.7.0" ExcludeAssets="analyzers" />
+    <PackageReference Include="ReactiveUI.Primitives.Async.Reactive" Version="5.7.0" ExcludeAssets="analyzers" />
+    <PackageReference Include="ReactiveUI.Primitives.Extensions.Reactive" Version="5.7.0" ExcludeAssets="analyzers" />
     <PackageReference Include="System.IO.Ports" Version="10.0.9" />
   </ItemGroup>
 
@@ -33,16 +45,17 @@
     <Using Include="System.Text.RegularExpressions" />
     <Using Include="System.Threading" />
     <Using Include="System.Threading.Tasks" />
-    <Using Include="ReactiveUI.Primitives" />
+    <Using Include="System.Reactive.Linq" />
+    <Using Include="System.Reactive.Threading.Tasks" />
     <Using Include="ReactiveUI.Primitives.Async" />
-    <Using Include="ReactiveUI.Primitives.Concurrency" />
     <Using Include="ReactiveUI.Primitives.Core" />
     <Using Include="ReactiveUI.Primitives.Disposables" />
-    <Using Include="ReactiveUI.Primitives.Signals" />
-    <Using Include="ReactiveUI.Primitives.Signals.Signal" Alias="Observable" />
-    <Using Include="ReactiveUI.Primitives.RxVoid" Alias="Unit" />
-    <Using Include="ReactiveUI.Primitives.Concurrency.ISequencer" Alias="IScheduler" />
-    <Using Include="ReactiveUI.Primitives.Concurrency.ThreadPoolSequencer" Alias="DefaultScheduler" />
+    <Using Include="ReactiveUI.Primitives.Reactive.Signals" />
+    <Using Include="ReactiveUI.Primitives.Reactive.Signals.Signal" Alias="Observable" />
+    <Using Include="ReactiveUI.Primitives.Result" Alias="Result" />
+    <Using Include="System.Reactive.Unit" Alias="Unit" />
+    <Using Include="System.Reactive.Concurrency.IScheduler" Alias="IScheduler" />
+    <Using Include="System.Reactive.Concurrency.DefaultScheduler" Alias="DefaultScheduler" />
     <Using Include="ReactiveUI.Primitives.Disposables.MultipleDisposable" Alias="CompositeDisposable" />
     <Using Include="ReactiveUI.Primitives.Disposables.Scope" Alias="Disposable" />
   </ItemGroup>
@@ -62,7 +75,7 @@
           PackagePath="analyzers/dotnet/cs/"
           Visible="false" />
   </ItemGroup>
-  
+
   <ItemGroup Condition="$(TargetFramework.StartsWith('net4'))">
     <PackageReference Include="PolySharp" Version="1.16.0">
       <PrivateAssets>all</PrivateAssets>
@@ -70,20 +83,4 @@
     </PackageReference>
     <PackageReference Include="System.Memory" Version="4.6.3" />
   </ItemGroup>
-
-  <ItemGroup>
-    <Compile Update="UdpClientRx.cs">
-      <DependentUpon>IPortRx.cs</DependentUpon>
-    </Compile>
-    <Compile Update="TcpClientRx.cs">
-      <DependentUpon>IPortRx.cs</DependentUpon>
-    </Compile>
-    <Compile Update="ISerialPortRx.cs">
-      <DependentUpon>IPortRx.cs</DependentUpon>
-    </Compile>
-    <Compile Update="SerialPortRx.cs">
-      <DependentUpon>ISerialPortRx.cs</DependentUpon>
-    </Compile>
-  </ItemGroup>
-
 </Project>

@@ -1,80 +1,69 @@
-﻿// Copyright (c) Chris Pulman. All rights reserved.
-// Licensed under the MIT license. See LICENSE file in the project root for full license information.
-
-using System;
-using System.Net;
-using System.Net.Sockets;
-using System.Reactive;
-using System.Reactive.Disposables;
-using System.Reactive.Disposables.Fluent;
-using System.Reactive.Linq;
-using System.Reactive.Subjects;
-using System.Threading;
-using System.Threading.Tasks;
-using ReactiveUI.Extensions;
-using ReactiveUI.Extensions.Async;
+// Copyright (c) 2022-2026 Chris Pulman. All rights reserved.
+// Chris Pulman licenses this file to you under the MIT license.
+// See the LICENSE file in the project root for full license information.
 
 namespace CP.IO.Ports;
 
-/// <summary>
-/// TcpClientRx.
-/// </summary>
+/// <summary>Provides a reactive wrapper around <see cref="TcpClient"/>.</summary>
 public class TcpClientRx : IPortRx
 {
+    /// <summary>The wrapped TCP client.</summary>
     private readonly TcpClient _tcpClient;
-    private readonly Subject<int> _bytesReceived = new();
-    private readonly Subject<int> _dataReceived = new();
-    private readonly Subject<byte[]> _dataChunks = new();
+
+    /// <summary>Publishes individual byte values read from the stream.</summary>
+    private readonly ReplaySignal<int> _bytesReceived = new(0);
+
+    /// <summary>Publishes individual byte values read by the receive loop.</summary>
+    private readonly ReplaySignal<int> _dataReceived = new(0);
+
+    /// <summary>Publishes byte chunks read by the receive loop.</summary>
+    private readonly ReplaySignal<byte[]> _dataChunks = new(0);
+
+    /// <summary>The cached async observable for received byte values.</summary>
     private IObservableAsync<int>? _dataReceivedAsync;
+
+    /// <summary>The cached async observable for received byte chunks.</summary>
     private IObservableAsync<byte[]>? _dataReceivedBatchesAsync;
+
+    /// <summary>The cached async observable for bytes read by ReadAsync.</summary>
     private IObservableAsync<int>? _bytesReceivedAsync;
+
+    /// <summary>The active connection subscription collection.</summary>
     private CompositeDisposable _disposablePort = [];
+
+    /// <summary>Tracks whether this instance has been disposed.</summary>
     private bool _disposedValue;
 
-    /// <summary>
-    /// Initializes a new instance of the <see cref="TcpClientRx"/> class.
-    /// </summary>
+    /// <summary>Initializes a new instance of the <see cref="TcpClientRx"/> class.</summary>
     /// <param name="tcpClient">The TCP client.</param>
     public TcpClientRx(TcpClient tcpClient) => _tcpClient = tcpClient;
 
-    /// <summary>
-    /// Initializes a new instance of the <see cref="TcpClientRx"/> class.
-    /// </summary>
+    /// <summary>Initializes a new instance of the <see cref="TcpClientRx"/> class.</summary>
     /// <param name="localEP">The local ep.</param>
     public TcpClientRx(IPEndPoint localEP) => _tcpClient = new(localEP);
 
-    /// <summary>
-    /// Initializes a new instance of the <see cref="TcpClientRx"/> class.
-    /// </summary>
+    /// <summary>Initializes a new instance of the <see cref="TcpClientRx"/> class.</summary>
     public TcpClientRx()
             : this(AddressFamily.InterNetwork)
     {
     }
 
-    /// <summary>
-    /// Initializes a new instance of the <see cref="TcpClientRx"/> class.
-    /// </summary>
+    /// <summary>Initializes a new instance of the <see cref="TcpClientRx"/> class.</summary>
     /// <param name="family">The family.</param>
     public TcpClientRx(AddressFamily family) => _tcpClient = new(family);
 
-    /// <summary>
-    /// Initializes a new instance of the <see cref="TcpClientRx"/> class.
-    /// </summary>
+    /// <summary>Initializes a new instance of the <see cref="TcpClientRx"/> class.</summary>
     /// <param name="hostname">The hostname.</param>
     /// <param name="port">The port.</param>
     public TcpClientRx(string hostname, int port) => _tcpClient = new(hostname, port);
 
-    /// <summary>
-    /// Gets the infinite timeout.
-    /// </summary>
+    /// <summary>Gets the infinite timeout.</summary>
     /// <value>
     /// The infinite timeout.
     /// </value>
     public int InfiniteTimeout => Timeout.Infinite;
 
-    /// <summary>
-    /// Gets or sets the read timeout.
-    /// </summary>
+    /// <summary>Gets or sets the read timeout.</summary>
     /// <value>
     /// The read timeout.
     /// </value>
@@ -84,25 +73,19 @@ public class TcpClientRx : IPortRx
         set => Stream.ReadTimeout = value;
     }
 
-    /// <summary>
-    /// Gets the underlying System.Net.Sockets.Socket.
-    /// </summary>
+    /// <summary>Gets the underlying System.Net.Sockets.Socket.</summary>
     /// <value>
     /// The underlying network System.Net.Sockets.Socket.
     /// </value>
     public Socket Client => _tcpClient!.Client;
 
-    /// <summary>
-    /// Gets the System.Net.Sockets.NetworkStream used to send and receive data.
-    /// </summary>
+    /// <summary>Gets the System.Net.Sockets.NetworkStream used to send and receive data.</summary>
     /// <value>
     /// The stream.
     /// </value>
     public NetworkStream Stream => _tcpClient!.GetStream();
 
-    /// <summary>
-    /// Gets or sets the write timeout.
-    /// </summary>
+    /// <summary>Gets or sets the write timeout.</summary>
     /// <value>
     /// The write timeout.
     /// </value>
@@ -112,74 +95,52 @@ public class TcpClientRx : IPortRx
         set => Stream.WriteTimeout = value;
     }
 
-    /// <summary>
-    /// Gets the data received after calling Open.
-    /// </summary>
+    /// <summary>Gets the data received after calling Open.</summary>
     /// <value>The data received.</value>
-    public IObservable<int> DataReceived => _dataReceived.Retry().Publish().RefCount();
+    public IObservable<int> DataReceived => _dataReceived;
 
-    /// <summary>
-    /// Gets the data received after calling Open as an async observable.
-    /// </summary>
+    /// <summary>Gets the data received after calling Open as an async observable.</summary>
     /// <value>The data received.</value>
     public IObservableAsync<int> DataReceivedAsync => _dataReceivedAsync ??= DataReceived.ToObservableAsync();
 
-    /// <summary>
-    /// Gets stream chunks (byte arrays) produced by the internal read loop.
-    /// </summary>
-    public IObservable<byte[]> DataReceivedBatches => _dataChunks.Retry().Publish().RefCount();
+    /// <summary>Gets stream chunks (byte arrays) produced by the internal read loop.</summary>
+    public IObservable<byte[]> DataReceivedBatches => _dataChunks;
 
-    /// <summary>
-    /// Gets stream chunks produced by the internal read loop as an async observable.
-    /// </summary>
+    /// <summary>Gets stream chunks produced by the internal read loop as an async observable.</summary>
     public IObservableAsync<byte[]> DataReceivedBatchesAsync => _dataReceivedBatchesAsync ??= DataReceivedBatches.ToObservableAsync();
 
-    /// <summary>
-    /// Gets the data received From ReadAsync.
-    /// </summary>
+    /// <summary>Gets the data received From ReadAsync.</summary>
     /// <value>The data received.</value>
-    public IObservable<int> BytesReceived => _bytesReceived.Retry().Publish().RefCount();
+    public IObservable<int> BytesReceived => _bytesReceived;
 
-    /// <summary>
-    /// Gets the data received from ReadAsync as an async observable.
-    /// </summary>
+    /// <summary>Gets the data received from ReadAsync as an async observable.</summary>
     /// <value>The data received.</value>
     public IObservableAsync<int> BytesReceivedAsync => _bytesReceivedAsync ??= BytesReceived.ToObservableAsync();
 
-    /// <summary>
-    /// Connects the specified hostname.
-    /// </summary>
+    /// <summary>Connects the specified hostname.</summary>
     /// <param name="hostname">The hostname.</param>
     /// <param name="port">The port.</param>
     public void Connect(string hostname, int port) =>
         _tcpClient.Connect(hostname, port);
 
-    /// <summary>
-    /// Connects the specified address.
-    /// </summary>
+    /// <summary>Connects the specified address.</summary>
     /// <param name="address">The address.</param>
     /// <param name="port">The port.</param>
     public void Connect(IPAddress address, int port) =>
         _tcpClient.Connect(address, port);
 
-    /// <summary>
-    /// Connects the specified remote ep.
-    /// </summary>
+    /// <summary>Connects the specified remote ep.</summary>
     /// <param name="remoteEP">The remote ep.</param>
     public void Connect(IPEndPoint remoteEP) =>
         _tcpClient.Connect(remoteEP);
 
-    /// <summary>
-    /// Connects the specified ip addresses.
-    /// </summary>
-    /// <param name="ipAddresses">The ip addresses.</param>
+    /// <summary>Connects the specified IP addresses.</summary>
+    /// <param name="addresses">The IP addresses.</param>
     /// <param name="port">The port.</param>
-    public void Connect(IPAddress[] ipAddresses, int port) =>
-        _tcpClient.Connect(ipAddresses, port);
+    public void Connect(IPAddress[] addresses, int port) =>
+        _tcpClient.Connect(addresses, port);
 
-    /// <summary>
-    /// Opens this instance.
-    /// </summary>
+    /// <summary>Opens this instance.</summary>
     /// <returns>A Task.</returns>
     public Task Open()
     {
@@ -188,35 +149,31 @@ public class TcpClientRx : IPortRx
             _disposablePort = [];
         }
 
-        return _disposablePort?.Count == 0 ? Task.Run(() => Connect().Subscribe().DisposeWith(_disposablePort)) : Task.CompletedTask;
+        return _disposablePort?.Count == 0 ? Task.Run(() => _disposablePort.Add(Connect().Subscribe())) : Task.CompletedTask;
     }
 
-    /// <summary>
-    /// Closes this instance.
-    /// </summary>
+    /// <summary>Closes this instance.</summary>
     public void Close() => _disposablePort?.Dispose();
 
-    /// <summary>
-    /// Writes the specified buffer.
-    /// </summary>
+    /// <summary>Writes the specified buffer.</summary>
     /// <param name="buffer">The buffer.</param>
     /// <param name="offset">The offset.</param>
     /// <param name="count">The count.</param>
     public void Write(byte[] buffer, int offset, int count) =>
         Stream.Write(buffer, offset, count);
 
-    /// <summary>
-    /// Reads the specified buffer.
-    /// </summary>
+    /// <summary>Reads the specified buffer.</summary>
     /// <param name="buffer">The buffer.</param>
     /// <param name="offset">The offset.</param>
     /// <param name="count">The count.</param>
     /// <returns>A int.</returns>
     public async Task<int> ReadAsync(byte[] buffer, int offset, int count)
     {
-#pragma warning disable CA1835 // Change the 'ReadAsync' method call to use the 'Stream.ReadAsync(Memory<byte>, CancellationToken)' overload.
+#if NETFRAMEWORK
         var read = await Stream.ReadAsync(buffer, offset, count).ConfigureAwait(false);
-#pragma warning restore CA1835 // Change the 'ReadAsync' method call to use the 'Stream.ReadAsync(Memory<byte>, CancellationToken)' overload.
+#else
+        var read = await Stream.ReadAsync(buffer.AsMemory(offset, count)).ConfigureAwait(false);
+#endif
         if (buffer?.Length > 0)
         {
             for (var i = 0; i < read; i++)
@@ -229,49 +186,47 @@ public class TcpClientRx : IPortRx
         return read;
     }
 
-    /// <summary>
-    /// Discards the in buffer.
-    /// </summary>
+    /// <summary>Discards the in buffer.</summary>
     public void DiscardInBuffer() =>
         Stream.Flush();
 
-    /// <summary>
-    /// Performs application-defined tasks associated with freeing, releasing, or resetting unmanaged resources.
-    /// </summary>
+    /// <summary>Performs application-defined tasks associated with freeing, releasing, or resetting unmanaged resources.</summary>
     public void Dispose()
     {
         Dispose(disposing: true);
         GC.SuppressFinalize(this);
     }
 
-    /// <summary>
-    /// Releases unmanaged and - optionally - managed resources.
-    /// </summary>
+    /// <summary>Releases unmanaged and - optionally - managed resources.</summary>
     /// <param name="disposing"><c>true</c> to release both managed and unmanaged resources; <c>false</c> to release only unmanaged resources.</param>
     protected virtual void Dispose(bool disposing)
     {
-        if (!_disposedValue)
+        if (_disposedValue)
         {
-            if (disposing)
-            {
-                _bytesReceived.Dispose();
-                _dataReceived.Dispose();
-                _dataChunks.Dispose();
-                _tcpClient.Dispose();
-                _disposablePort.Dispose();
-            }
-
-            _disposedValue = true;
+            return;
         }
+
+        if (disposing)
+        {
+            _bytesReceived.Dispose();
+            _dataReceived.Dispose();
+            _dataChunks.Dispose();
+            _tcpClient.Dispose();
+            _disposablePort.Dispose();
+        }
+
+        _disposedValue = true;
     }
 
+    /// <summary>Creates the connection observable that drives the TCP receive loop.</summary>
+    /// <returns>An observable that signals when the receive loop has started.</returns>
     private IObservable<Unit> Connect() => Observable.Create<Unit>(obs =>
     {
         var cts = new CancellationTokenSource();
         var token = cts.Token;
 
         // Start a dedicated async read loop to minimize per-byte overhead and avoid busy waits
-        Task.Factory
+        _ = Task.Factory
             .StartNew(
                 async () =>
                 {
@@ -335,18 +290,8 @@ public class TcpClientRx : IPortRx
 
         return Disposable.Create(() =>
         {
-            try
-            {
-                cts.Cancel();
-            }
-            catch
-            {
-                // ignore
-            }
-            finally
-            {
-                cts.Dispose();
-            }
+            cts.Cancel();
+            cts.Dispose();
         });
-    }).Publish().RefCount();
+    });
 }

@@ -1,28 +1,13 @@
-// Copyright (c) Chris Pulman. All rights reserved.
-// Licensed under the MIT license. See LICENSE file in the project root for full license information.
-
-using System;
-using System.Collections.Generic;
-using System.IO;
-using System.Linq;
-using System.Threading.Tasks;
-using CP.IO.Ports.SourceGeneration;
-using CP.IO.Ports.SourceGenerators;
-using Microsoft.CodeAnalysis;
-using Microsoft.CodeAnalysis.CSharp;
-using TUnit.Assertions;
-using TUnit.Core;
+// Copyright (c) 2022-2026 Chris Pulman. All rights reserved.
+// Chris Pulman licenses this file to you under the MIT license.
+// See the LICENSE file in the project root for full license information.
 
 namespace CP.IO.Ports.Tests;
 
-/// <summary>
-/// Tests for the serial reactive stream source generator.
-/// </summary>
+/// <summary>Tests for the serial reactive stream source generator.</summary>
 public class SerialPortReactiveStreamGeneratorTests
 {
-    /// <summary>
-    /// Verifies generated serial stream properties and observables compile.
-    /// </summary>
+    /// <summary>Verifies generated serial stream properties and observables compile.</summary>
     /// <returns>A <see cref="Task"/> representing the asynchronous unit test.</returns>
     [Test]
     public async Task Generator_CreatesPropertyAndObservableStreams()
@@ -44,15 +29,40 @@ public partial class DeviceState
         var generator = new SerialPortReactiveStreamGenerator();
         var driver = CSharpGeneratorDriver.Create([generator.AsSourceGenerator()], parseOptions: parseOptions);
 
-        driver.RunGeneratorsAndUpdateCompilation(compilation, out var outputCompilation, out var diagnostics);
+        _ = driver.RunGeneratorsAndUpdateCompilation(compilation, out var outputCompilation, out var diagnostics);
 
-        var errors = outputCompilation.GetDiagnostics()
-            .Concat(diagnostics)
-            .Where(diagnostic => diagnostic.Severity == DiagnosticSeverity.Error)
-            .ToArray();
+        var errors = new List<Diagnostic>();
+        foreach (var diagnostic in outputCompilation.GetDiagnostics())
+        {
+            if (diagnostic.Severity == DiagnosticSeverity.Error)
+            {
+                errors.Add(diagnostic);
+            }
+        }
 
-        var generatedTree = outputCompilation.SyntaxTrees.Single(tree =>
-            tree.FilePath.EndsWith("GeneratedTests_DeviceState.SerialPortReactiveStreams.g.cs", StringComparison.Ordinal));
+        foreach (var diagnostic in diagnostics)
+        {
+            if (diagnostic.Severity == DiagnosticSeverity.Error)
+            {
+                errors.Add(diagnostic);
+            }
+        }
+
+        SyntaxTree? generatedTree = null;
+        foreach (var tree in outputCompilation.SyntaxTrees)
+        {
+            if (tree.FilePath.EndsWith("GeneratedTests_DeviceState.SerialPortReactiveStreams.g.cs", StringComparison.Ordinal))
+            {
+                generatedTree = tree;
+                break;
+            }
+        }
+
+        if (generatedTree is null)
+        {
+            throw new InvalidOperationException("The expected generated syntax tree was not produced.");
+        }
+
         var generatedSource = generatedTree.ToString();
 
         await Assert.That(errors).IsEmpty();
@@ -62,22 +72,47 @@ public partial class DeviceState
         await Assert.That(generatedSource).Contains("public bool IsConnected");
     }
 
+    /// <summary>Creates a C# compilation for source generator tests.</summary>
+    /// <param name="source">The source text to compile.</param>
+    /// <param name="parseOptions">The parse options to use.</param>
+    /// <returns>The created compilation.</returns>
     private static CSharpCompilation CreateCompilation(string source, CSharpParseOptions parseOptions)
     {
         var references = new List<MetadataReference>();
         var trustedPlatformAssemblies = ((string?)AppContext.GetData("TRUSTED_PLATFORM_ASSEMBLIES"))?
             .Split(Path.PathSeparator) ?? [];
 
-        references.AddRange(trustedPlatformAssemblies.Select(path => MetadataReference.CreateFromFile(path)));
-        references.Add(MetadataReference.CreateFromFile(typeof(SerialPortRx).Assembly.Location));
-        references.Add(MetadataReference.CreateFromFile(typeof(SerialPortReactiveValueConverter).Assembly.Location));
-        references.Add(MetadataReference.CreateFromFile(typeof(System.Reactive.Linq.Observable).Assembly.Location));
-        references.Add(MetadataReference.CreateFromFile(typeof(ReactiveUI.Extensions.Async.IObservableAsync<>).Assembly.Location));
+        foreach (var path in trustedPlatformAssemblies)
+        {
+            AddReferenceIfMissing(references, path);
+        }
+
+        AddReferenceIfMissing(references, typeof(SerialPortRx).Assembly.Location);
+        AddReferenceIfMissing(references, typeof(SerialPortReactiveValueConverter).Assembly.Location);
+        AddReferenceIfMissing(references, typeof(Signal).Assembly.Location);
+        AddReferenceIfMissing(references, typeof(IObservableAsync<>).Assembly.Location);
+        AddReferenceIfMissing(references, typeof(ObservableAsyncBridgeExtensions).Assembly.Location);
 
         return CSharpCompilation.Create(
             "SerialPortRx.GeneratedTests",
             [CSharpSyntaxTree.ParseText(source, parseOptions)],
-            references.DistinctBy(reference => reference.Display),
+            references,
             new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary, nullableContextOptions: NullableContextOptions.Enable));
+    }
+
+    /// <summary>Adds a metadata reference if it has not already been added.</summary>
+    /// <param name="references">The reference collection.</param>
+    /// <param name="path">The assembly path.</param>
+    private static void AddReferenceIfMissing(List<MetadataReference> references, string path)
+    {
+        foreach (var reference in references)
+        {
+            if (string.Equals(reference.Display, path, StringComparison.Ordinal))
+            {
+                return;
+            }
+        }
+
+        references.Add(MetadataReference.CreateFromFile(path));
     }
 }
