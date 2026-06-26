@@ -1,352 +1,17 @@
-// Copyright (c) Chris Pulman. All rights reserved.
-// Licensed under the MIT license. See LICENSE file in the project root for full license information.
-
-using System;
-using System.Collections.Generic;
-using System.Collections.Immutable;
-using System.Linq;
-using System.Text;
-using System.Threading;
-using Microsoft.CodeAnalysis;
-using Microsoft.CodeAnalysis.CSharp;
-using Microsoft.CodeAnalysis.CSharp.Syntax;
+// Copyright (c) 2022-2026 Chris Pulman. All rights reserved.
+// Chris Pulman licenses this file to you under the MIT license.
+// See the LICENSE file in the project root for full license information.
 
 namespace CP.IO.Ports.SourceGenerators;
 
-/// <summary>
-/// Generates reactive serial-port properties and observable streams.
-/// </summary>
+/// <summary>Generates reactive serial-port properties and observable streams.</summary>
 [Generator(LanguageNames.CSharp)]
 public sealed class SerialPortReactiveStreamGenerator : IIncrementalGenerator
 {
+    /// <summary>Metadata name for the generated attribute.</summary>
     private const string AttributeMetadataName = "CP.IO.Ports.SourceGeneration.SerialPortReactiveStreamAttribute";
-    private static readonly DiagnosticDescriptor ClassMustBePartial = new(
-        "SPRX001",
-        "Reactive serial stream target must be partial",
-        "Type '{0}' must be partial to receive generated serial stream members",
-        "SerialPortRx.SourceGeneration",
-        DiagnosticSeverity.Error,
-        isEnabledByDefault: true);
 
-    private static readonly DiagnosticDescriptor PropertyNameMustBeIdentifier = new(
-        "SPRX002",
-        "Reactive serial stream property name must be a valid identifier",
-        "Property name '{0}' must be a valid C# identifier",
-        "SerialPortRx.SourceGeneration",
-        DiagnosticSeverity.Error,
-        isEnabledByDefault: true);
-
-    /// <inheritdoc/>
-    public void Initialize(IncrementalGeneratorInitializationContext context)
-    {
-        context.RegisterPostInitializationOutput(static postInitializationContext =>
-            postInitializationContext.AddSource("SerialPortReactiveStreamAttribute.g.cs", AttributeSource));
-
-        var streamDeclarations = context.SyntaxProvider
-            .ForAttributeWithMetadataName(
-                AttributeMetadataName,
-                static (node, _) => node is ClassDeclarationSyntax,
-                static (syntaxContext, cancellationToken) => GetStreamInfos(syntaxContext, cancellationToken));
-
-        context.RegisterSourceOutput(
-            streamDeclarations.Collect(),
-            static (sourceProductionContext, streams) => Execute(sourceProductionContext, streams));
-    }
-
-    private static ImmutableArray<StreamInfo> GetStreamInfos(GeneratorAttributeSyntaxContext context, CancellationToken cancellationToken)
-    {
-        cancellationToken.ThrowIfCancellationRequested();
-
-        if (context.TargetSymbol is not INamedTypeSymbol targetType)
-        {
-            return ImmutableArray<StreamInfo>.Empty;
-        }
-
-        var builder = ImmutableArray.CreateBuilder<StreamInfo>();
-        foreach (var attribute in context.Attributes.Where(attributeData =>
-                     attributeData.AttributeClass?.ToDisplayString() == AttributeMetadataName))
-        {
-            if (TryCreateStreamInfo(targetType, attribute, cancellationToken, out var streamInfo))
-            {
-                builder.Add(streamInfo);
-            }
-        }
-
-        return builder.ToImmutable();
-    }
-
-    private static bool TryCreateStreamInfo(INamedTypeSymbol targetType, AttributeData attribute, CancellationToken cancellationToken, out StreamInfo streamInfo)
-    {
-        streamInfo = default!;
-        if (attribute.ConstructorArguments.Length < 2)
-        {
-            return false;
-        }
-
-        var propertyName = attribute.ConstructorArguments[0].Value as string ?? string.Empty;
-        var propertyType = attribute.ConstructorArguments[1].Value as ITypeSymbol;
-        var pattern = attribute.ConstructorArguments.Length > 2
-            ? attribute.ConstructorArguments[2].Value as string
-            : null;
-
-        var source = SerialPortReactiveSource.Lines;
-        var groupName = "value";
-        var groupNumber = 1;
-        var ignoreCase = false;
-
-        foreach (var argument in attribute.NamedArguments)
-        {
-            switch (argument.Key)
-            {
-                case "Source":
-                    source = (SerialPortReactiveSource)(argument.Value.Value as int? ?? 0);
-                    break;
-                case "GroupName":
-                    groupName = argument.Value.Value as string;
-                    break;
-                case "GroupNumber":
-                    groupNumber = argument.Value.Value as int? ?? 1;
-                    break;
-                case "IgnoreCase":
-                    ignoreCase = argument.Value.Value as bool? ?? false;
-                    break;
-            }
-        }
-
-        streamInfo = new StreamInfo(
-            targetType,
-            propertyName,
-            propertyType,
-            pattern,
-            source,
-            groupName,
-            groupNumber,
-            ignoreCase,
-            attribute.ApplicationSyntaxReference?.GetSyntax(cancellationToken).GetLocation() ?? targetType.Locations.FirstOrDefault());
-
-        return true;
-    }
-
-    private static void Execute(SourceProductionContext context, ImmutableArray<ImmutableArray<StreamInfo>> streamInfoGroups)
-    {
-        var streamInfos = streamInfoGroups.SelectMany(static group => group);
-        foreach (var typeGroup in streamInfos.GroupBy(static info => info.TargetType, SymbolEqualityComparer.Default))
-        {
-            var targetType = typeGroup.First().TargetType;
-            if (!IsPartial(targetType))
-            {
-                context.ReportDiagnostic(Diagnostic.Create(ClassMustBePartial, targetType.Locations.FirstOrDefault(), targetType.Name));
-                continue;
-            }
-
-            var streams = new List<StreamInfo>();
-            foreach (var stream in typeGroup)
-            {
-                if (stream.PropertyType == null)
-                {
-                    continue;
-                }
-
-                if (!SyntaxFacts.IsValidIdentifier(stream.PropertyName))
-                {
-                    context.ReportDiagnostic(Diagnostic.Create(PropertyNameMustBeIdentifier, stream.Location, stream.PropertyName));
-                    continue;
-                }
-
-                streams.Add(stream);
-            }
-
-            if (streams.Count == 0)
-            {
-                continue;
-            }
-
-            var source = GenerateType(targetType, streams);
-            context.AddSource($"{SanitizeHintName(targetType.ToDisplayString())}.SerialPortReactiveStreams.g.cs", source);
-        }
-    }
-
-    private static bool IsPartial(INamedTypeSymbol typeSymbol) =>
-        typeSymbol.DeclaringSyntaxReferences
-            .Select(reference => reference.GetSyntax())
-            .OfType<ClassDeclarationSyntax>()
-            .Any(classDeclaration => classDeclaration.Modifiers.Any(SyntaxKind.PartialKeyword));
-
-    private static string GenerateType(INamedTypeSymbol targetType, IReadOnlyList<StreamInfo> streams)
-    {
-        var builder = new StringBuilder();
-        builder.AppendLine("// <auto-generated />");
-        builder.AppendLine("#nullable enable");
-        builder.AppendLine();
-
-        var namespaceName = targetType.ContainingNamespace.IsGlobalNamespace ? null : targetType.ContainingNamespace.ToDisplayString();
-        if (namespaceName != null)
-        {
-            builder.Append("namespace ").Append(namespaceName).AppendLine(";");
-            builder.AppendLine();
-        }
-
-        builder.Append("partial class ").Append(targetType.Name).AppendLine();
-        builder.AppendLine("{");
-
-        foreach (var stream in streams)
-        {
-            AppendStreamMembers(builder, stream);
-        }
-
-        builder.AppendLine("    public global::System.IDisposable ConnectReactiveSerialPort(global::CP.IO.Ports.ISerialPortRx serialPort)");
-        builder.AppendLine("    {");
-        builder.AppendLine("        if (serialPort == null)");
-        builder.AppendLine("        {");
-        builder.AppendLine("            throw new global::System.ArgumentNullException(nameof(serialPort));");
-        builder.AppendLine("        }");
-        builder.AppendLine();
-        builder.AppendLine("        var disposables = new global::System.Reactive.Disposables.CompositeDisposable();");
-
-        foreach (var stream in streams)
-        {
-            AppendSubscription(builder, stream);
-        }
-
-        builder.AppendLine("        return disposables;");
-        builder.AppendLine("    }");
-        builder.AppendLine("}");
-
-        return builder.ToString();
-    }
-
-    private static void AppendStreamMembers(StringBuilder builder, StreamInfo stream)
-    {
-        var typeName = stream.PropertyType!.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
-        var fieldName = GetSubjectFieldName(stream.PropertyName);
-
-        builder.Append("    private readonly global::System.Reactive.Subjects.Subject<")
-            .Append(typeName)
-            .Append("> ")
-            .Append(fieldName)
-            .AppendLine(" = new();");
-        builder.AppendLine();
-        builder.Append("    public ").Append(typeName).Append(' ').Append(stream.PropertyName).AppendLine(" { get; private set; } = default!;");
-        builder.AppendLine();
-        builder.Append("    public global::System.IObservable<")
-            .Append(typeName)
-            .Append("> ")
-            .Append(stream.PropertyName)
-            .AppendLine("Observable => global::System.Reactive.Linq.Observable.AsObservable(" + fieldName + ");");
-        builder.AppendLine();
-        builder.Append("    public global::ReactiveUI.Extensions.Async.IObservableAsync<")
-            .Append(typeName)
-            .Append("> ")
-            .Append(stream.PropertyName)
-            .AppendLine("ObservableAsync => global::ReactiveUI.Extensions.Async.ObservableBridgeExtensions.ToObservableAsync(" + stream.PropertyName + "Observable);");
-        builder.AppendLine();
-    }
-
-    private static void AppendSubscription(StringBuilder builder, StreamInfo stream)
-    {
-        var sourceExpression = stream.Source switch
-        {
-            SerialPortReactiveSource.DataReceived => "serialPort.DataReceived",
-            SerialPortReactiveSource.DataReceivedBytes => "serialPort.DataReceivedBytes",
-            SerialPortReactiveSource.BytesReceived => "serialPort.BytesReceived",
-            SerialPortReactiveSource.IsOpen => "serialPort.IsOpenObservable",
-            _ => "serialPort.Lines",
-        };
-
-        var typeName = stream.PropertyType!.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
-        var fieldName = GetSubjectFieldName(stream.PropertyName);
-
-        builder.Append("        disposables.Add(global::System.ObservableExtensions.Subscribe(")
-            .Append(sourceExpression)
-            .AppendLine(", __serialPortRxValue =>");
-        builder.AppendLine("        {");
-        builder.Append("            if (global::CP.IO.Ports.SourceGeneration.SerialPortReactiveValueConverter.TryConvertMatch<")
-            .Append(typeName)
-            .Append(">(__serialPortRxValue, ")
-            .Append(ToLiteral(stream.Pattern))
-            .Append(", ")
-            .Append(ToLiteral(stream.GroupName))
-            .Append(", ")
-            .Append(stream.GroupNumber.ToString(System.Globalization.CultureInfo.InvariantCulture))
-            .Append(", ")
-            .Append(stream.IgnoreCase ? "true" : "false")
-            .AppendLine(", out var __serialPortRxConverted))");
-        builder.AppendLine("            {");
-        builder.Append("                ").Append(stream.PropertyName).AppendLine(" = __serialPortRxConverted;");
-        builder.Append("                ").Append(fieldName).AppendLine(".OnNext(__serialPortRxConverted);");
-        builder.AppendLine("            }");
-        builder.AppendLine("        }));");
-    }
-
-    private static string GetSubjectFieldName(string propertyName) =>
-        "__serialPortRx" + propertyName + "Subject";
-
-    private static string ToLiteral(string? value) =>
-        value == null ? "null" : SymbolDisplay.FormatLiteral(value, quote: true);
-
-    private static string SanitizeHintName(string value)
-    {
-        var builder = new StringBuilder(value.Length);
-        foreach (var character in value)
-        {
-            builder.Append(char.IsLetterOrDigit(character) ? character : '_');
-        }
-
-        return builder.ToString();
-    }
-
-    private enum SerialPortReactiveSource
-    {
-        Lines = 0,
-        DataReceived = 1,
-        DataReceivedBytes = 2,
-        BytesReceived = 3,
-        IsOpen = 4,
-    }
-
-    private sealed class StreamInfo
-    {
-        public StreamInfo(
-            INamedTypeSymbol targetType,
-            string propertyName,
-            ITypeSymbol? propertyType,
-            string? pattern,
-            SerialPortReactiveSource source,
-            string? groupName,
-            int groupNumber,
-            bool ignoreCase,
-            Location? location)
-        {
-            TargetType = targetType;
-            PropertyName = propertyName;
-            PropertyType = propertyType;
-            Pattern = pattern;
-            Source = source;
-            GroupName = groupName;
-            GroupNumber = groupNumber;
-            IgnoreCase = ignoreCase;
-            Location = location;
-        }
-
-        public INamedTypeSymbol TargetType { get; }
-
-        public string PropertyName { get; }
-
-        public ITypeSymbol? PropertyType { get; }
-
-        public string? Pattern { get; }
-
-        public SerialPortReactiveSource Source { get; }
-
-        public string? GroupName { get; }
-
-        public int GroupNumber { get; }
-
-        public bool IgnoreCase { get; }
-
-        public Location? Location { get; }
-    }
-
+    /// <summary>Source code for the marker attribute emitted during generator initialization.</summary>
     private const string AttributeSource = """
 // <auto-generated />
 #nullable enable
@@ -449,4 +114,511 @@ public sealed class SerialPortReactiveStreamAttribute : global::System.Attribute
     public bool IgnoreCase { get; set; }
 }
 """;
+
+    /// <summary>Diagnostic reported when a target class is not partial.</summary>
+    private static readonly DiagnosticDescriptor ClassMustBePartial = new(
+        "SPRX001",
+        "Reactive serial stream target must be partial",
+        "Type '{0}' must be partial to receive generated serial stream members",
+        "SerialPortRx.SourceGeneration",
+        DiagnosticSeverity.Error,
+        isEnabledByDefault: true);
+
+    /// <summary>Diagnostic reported when a generated property name is invalid.</summary>
+    private static readonly DiagnosticDescriptor PropertyNameMustBeIdentifier = new(
+        "SPRX002",
+        "Reactive serial stream property name must be a valid identifier",
+        "Property name '{0}' must be a valid C# identifier",
+        "SerialPortRx.SourceGeneration",
+        DiagnosticSeverity.Error,
+        isEnabledByDefault: true);
+
+    /// <inheritdoc/>
+    public void Initialize(IncrementalGeneratorInitializationContext context)
+    {
+        context.RegisterPostInitializationOutput(static postInitializationContext =>
+            postInitializationContext.AddSource("SerialPortReactiveStreamAttribute.g.cs", AttributeSource));
+
+        var streamDeclarations = context.SyntaxProvider
+            .ForAttributeWithMetadataName(
+                AttributeMetadataName,
+                static (node, _) => node is ClassDeclarationSyntax,
+                static (syntaxContext, cancellationToken) => GetStreamInfos(syntaxContext, cancellationToken));
+
+        context.RegisterSourceOutput(
+            streamDeclarations.Collect(),
+            static (sourceProductionContext, streams) => Execute(sourceProductionContext, streams));
+    }
+
+    /// <summary>Gets all stream declarations from matching attributes on a target type.</summary>
+    /// <param name="context">The attribute syntax context.</param>
+    /// <param name="cancellationToken">The cancellation token supplied by Roslyn.</param>
+    /// <returns>The stream declarations found on the target type.</returns>
+    private static ImmutableArray<StreamInfo> GetStreamInfos(GeneratorAttributeSyntaxContext context, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+
+        if (context.TargetSymbol is not INamedTypeSymbol targetType)
+        {
+            return ImmutableArray<StreamInfo>.Empty;
+        }
+
+        var builder = ImmutableArray.CreateBuilder<StreamInfo>();
+        foreach (var attribute in context.Attributes)
+        {
+            if (attribute.AttributeClass?.ToDisplayString() == AttributeMetadataName &&
+                TryCreateStreamInfo(targetType, attribute, cancellationToken, out var streamInfo))
+            {
+                builder.Add(streamInfo);
+            }
+        }
+
+        return builder.ToImmutable();
+    }
+
+    /// <summary>Creates a stream declaration from a single attribute instance.</summary>
+    /// <param name="targetType">The target class symbol.</param>
+    /// <param name="attribute">The attribute data.</param>
+    /// <param name="cancellationToken">The cancellation token supplied by Roslyn.</param>
+    /// <param name="streamInfo">The created stream declaration.</param>
+    /// <returns><see langword="true"/> when the attribute contains the required constructor data.</returns>
+    private static bool TryCreateStreamInfo(INamedTypeSymbol targetType, AttributeData attribute, CancellationToken cancellationToken, out StreamInfo streamInfo)
+    {
+        streamInfo = default!;
+        if (attribute.ConstructorArguments.Length < 2)
+        {
+            return false;
+        }
+
+        var propertyName = (attribute.ConstructorArguments[0].Value as string) ?? string.Empty;
+        var propertyType = attribute.ConstructorArguments[1].Value as ITypeSymbol;
+        var pattern = attribute.ConstructorArguments.Length > 2
+            ? attribute.ConstructorArguments[2].Value as string
+            : null;
+
+        var sourceExpression = "serialPort.Lines";
+        var groupName = "value";
+        var groupNumber = 1;
+        var ignoreCase = false;
+
+        foreach (var argument in attribute.NamedArguments)
+        {
+            ApplyNamedArgument(argument, ref sourceExpression, ref groupName, ref groupNumber, ref ignoreCase);
+        }
+
+        streamInfo = new(
+            targetType,
+            propertyName,
+            propertyType,
+            pattern,
+            sourceExpression,
+            groupName,
+            groupNumber,
+            ignoreCase,
+            attribute.ApplicationSyntaxReference?.GetSyntax(cancellationToken).GetLocation() ?? GetFirstLocation(targetType));
+
+        return true;
+    }
+
+    /// <summary>Applies a supported named attribute argument to the pending stream declaration.</summary>
+    /// <param name="argument">The named argument to apply.</param>
+    /// <param name="sourceExpression">The generated observable expression.</param>
+    /// <param name="groupName">The named regular expression group.</param>
+    /// <param name="groupNumber">The fallback regular expression group number.</param>
+    /// <param name="ignoreCase">Whether matching should ignore case.</param>
+    private static void ApplyNamedArgument(
+        KeyValuePair<string, TypedConstant> argument,
+        ref string sourceExpression,
+        ref string? groupName,
+        ref int groupNumber,
+        ref bool ignoreCase)
+    {
+        switch (argument.Key)
+        {
+            case "Source":
+            {
+                sourceExpression = GetSourceExpression((argument.Value.Value as int?) ?? 0);
+                break;
+            }
+
+            case "GroupName":
+            {
+                groupName = argument.Value.Value as string;
+                break;
+            }
+
+            case "GroupNumber":
+            {
+                groupNumber = (argument.Value.Value as int?) ?? 1;
+                break;
+            }
+
+            case "IgnoreCase":
+            {
+                ignoreCase = (argument.Value.Value as bool?) ?? false;
+                break;
+            }
+        }
+    }
+
+    /// <summary>Gets the generated observable expression for a generated attribute source value.</summary>
+    /// <param name="source">The numeric value of the generated source enum.</param>
+    /// <returns>The generated observable expression.</returns>
+    private static string GetSourceExpression(int source) =>
+        source switch
+        {
+            1 => "serialPort.DataReceived",
+            2 => "serialPort.DataReceivedBytes",
+            3 => "serialPort.BytesReceived",
+            4 => "serialPort.IsOpenObservable",
+            _ => "serialPort.Lines",
+        };
+
+    /// <summary>Executes source generation for the collected stream declarations.</summary>
+    /// <param name="context">The source production context.</param>
+    /// <param name="streamInfoGroups">The grouped stream declarations from syntax discovery.</param>
+    private static void Execute(SourceProductionContext context, ImmutableArray<ImmutableArray<StreamInfo>> streamInfoGroups)
+    {
+        foreach (var typeGroup in GroupStreamInfosByType(streamInfoGroups))
+        {
+            GenerateForType(context, (INamedTypeSymbol)typeGroup.Key, typeGroup.Value);
+        }
+    }
+
+    /// <summary>Groups stream declarations by target type.</summary>
+    /// <param name="streamInfoGroups">The stream declaration groups to combine.</param>
+    /// <returns>The stream declarations keyed by target type.</returns>
+    private static Dictionary<ISymbol, List<StreamInfo>> GroupStreamInfosByType(ImmutableArray<ImmutableArray<StreamInfo>> streamInfoGroups)
+    {
+        var streamInfosByType = new Dictionary<ISymbol, List<StreamInfo>>(SymbolEqualityComparer.Default);
+        foreach (var group in streamInfoGroups)
+        {
+            foreach (var streamInfo in group)
+            {
+                AddStreamInfo(streamInfosByType, streamInfo);
+            }
+        }
+
+        return streamInfosByType;
+    }
+
+    /// <summary>Adds one stream declaration to the grouping dictionary.</summary>
+    /// <param name="streamInfosByType">The stream grouping dictionary.</param>
+    /// <param name="streamInfo">The stream declaration to add.</param>
+    private static void AddStreamInfo(Dictionary<ISymbol, List<StreamInfo>> streamInfosByType, StreamInfo streamInfo)
+    {
+        if (!streamInfosByType.TryGetValue(streamInfo.TargetType, out var streamInfos))
+        {
+            streamInfos = [];
+            streamInfosByType.Add(streamInfo.TargetType, streamInfos);
+        }
+
+        streamInfos.Add(streamInfo);
+    }
+
+    /// <summary>Generates source for a single target type.</summary>
+    /// <param name="context">The source production context.</param>
+    /// <param name="targetType">The target class symbol.</param>
+    /// <param name="typeStreams">The stream declarations for the target type.</param>
+    private static void GenerateForType(SourceProductionContext context, INamedTypeSymbol targetType, IReadOnlyList<StreamInfo> typeStreams)
+    {
+        if (!IsPartial(targetType))
+        {
+            context.ReportDiagnostic(Diagnostic.Create(ClassMustBePartial, GetFirstLocation(targetType), targetType.Name));
+            return;
+        }
+
+        var streams = GetValidStreams(context, typeStreams);
+        if (streams.Count == 0)
+        {
+            return;
+        }
+
+        var source = GenerateType(targetType, streams);
+        context.AddSource($"{SanitizeHintName(targetType.ToDisplayString())}.SerialPortReactiveStreams.g.cs", source);
+    }
+
+    /// <summary>Gets valid stream declarations and reports declaration diagnostics.</summary>
+    /// <param name="context">The source production context.</param>
+    /// <param name="typeStreams">The stream declarations for the target type.</param>
+    /// <returns>The stream declarations that can be generated.</returns>
+    private static List<StreamInfo> GetValidStreams(SourceProductionContext context, IReadOnlyList<StreamInfo> typeStreams)
+    {
+        var streams = new List<StreamInfo>();
+        foreach (var stream in typeStreams)
+        {
+            if (stream.PropertyType is null)
+            {
+                continue;
+            }
+
+            if (!SyntaxFacts.IsValidIdentifier(stream.PropertyName))
+            {
+                context.ReportDiagnostic(Diagnostic.Create(PropertyNameMustBeIdentifier, stream.Location, stream.PropertyName));
+                continue;
+            }
+
+            streams.Add(stream);
+        }
+
+        return streams;
+    }
+
+    /// <summary>Determines whether a target class is declared partial.</summary>
+    /// <param name="typeSymbol">The target type symbol.</param>
+    /// <returns><see langword="true"/> when any declaring syntax reference is partial.</returns>
+    private static bool IsPartial(INamedTypeSymbol typeSymbol)
+    {
+        foreach (var syntaxReference in typeSymbol.DeclaringSyntaxReferences)
+        {
+            if (syntaxReference.GetSyntax() is not ClassDeclarationSyntax classDeclaration)
+            {
+                continue;
+            }
+
+            foreach (var modifier in classDeclaration.Modifiers)
+            {
+                if (modifier.IsKind(SyntaxKind.PartialKeyword))
+                {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    /// <summary>Generates the partial class containing reactive stream members.</summary>
+    /// <param name="targetType">The target class symbol.</param>
+    /// <param name="streams">The stream declarations for the target class.</param>
+    /// <returns>The generated source text.</returns>
+    private static string GenerateType(INamedTypeSymbol targetType, IReadOnlyList<StreamInfo> streams)
+    {
+        var builder = new StringBuilder();
+        _ = builder.AppendLine("// <auto-generated />");
+        _ = builder.AppendLine("#nullable enable");
+        _ = builder.AppendLine();
+
+        var namespaceName = targetType.ContainingNamespace.IsGlobalNamespace ? null : targetType.ContainingNamespace.ToDisplayString();
+        if (namespaceName is not null)
+        {
+            _ = builder.Append("namespace ").Append(namespaceName).AppendLine(";");
+            _ = builder.AppendLine();
+        }
+
+        _ = builder.Append("partial class ").Append(targetType.Name).AppendLine();
+        _ = builder.AppendLine("{");
+
+        foreach (var stream in streams)
+        {
+            AppendStreamMembers(builder, stream);
+        }
+
+        _ = builder.AppendLine("    public global::System.IDisposable ConnectReactiveSerialPort(global::CP.IO.Ports.ISerialPortRx serialPort)");
+        _ = builder.AppendLine("    {");
+        _ = builder.AppendLine("        if (serialPort is null)");
+        _ = builder.AppendLine("        {");
+        _ = builder.AppendLine("            throw new global::System.ArgumentNullException(nameof(serialPort));");
+        _ = builder.AppendLine("        }");
+        _ = builder.AppendLine();
+        _ = builder.AppendLine("        var disposables = new global::ReactiveUI.Primitives.Disposables.MultipleDisposable();");
+
+        foreach (var stream in streams)
+        {
+            AppendSubscription(builder, stream);
+        }
+
+        _ = builder.AppendLine("        return disposables;");
+        _ = builder.AppendLine("    }");
+        _ = builder.AppendLine("}");
+
+        return builder.ToString();
+    }
+
+    /// <summary>Appends generated fields, properties, and observables for one stream.</summary>
+    /// <param name="builder">The source builder.</param>
+    /// <param name="stream">The stream declaration.</param>
+    private static void AppendStreamMembers(StringBuilder builder, StreamInfo stream)
+    {
+        var typeName = stream.PropertyType!.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+        var fieldName = GetSubjectFieldName(stream.PropertyName);
+
+        _ = builder.AppendLine("#if REACTIVE_SHIM");
+        _ = builder.Append("    private readonly global::ReactiveUI.Primitives.Reactive.Signals.ReplaySignal<")
+            .Append(typeName)
+            .Append("> ")
+            .Append(fieldName)
+            .AppendLine(" = new(0);");
+        _ = builder.AppendLine("#else");
+        _ = builder.Append("    private readonly global::ReactiveUI.Primitives.Signals.ReplaySignal<")
+            .Append(typeName)
+            .Append("> ")
+            .Append(fieldName)
+            .AppendLine(" = new(0);");
+        _ = builder.AppendLine("#endif");
+        _ = builder.AppendLine();
+        _ = builder.Append("    public ").Append(typeName).Append(' ').Append(stream.PropertyName).AppendLine(" { get; private set; } = default!;");
+        _ = builder.AppendLine();
+        _ = builder.Append("    public global::System.IObservable<")
+            .Append(typeName)
+            .Append("> ")
+            .Append(stream.PropertyName)
+            .Append("Observable => ")
+            .Append(fieldName)
+            .AppendLine(";");
+        _ = builder.AppendLine();
+        _ = builder.Append("    public global::ReactiveUI.Primitives.Async.IObservableAsync<")
+            .Append(typeName)
+            .Append("> ")
+            .Append(stream.PropertyName)
+            .Append("ObservableAsync => global::CP.IO.Ports.ObservableAsyncBridgeExtensions.ToObservableAsync(")
+            .Append(stream.PropertyName)
+            .AppendLine("Observable);");
+        _ = builder.AppendLine();
+    }
+
+    /// <summary>Appends a generated subscription for one stream.</summary>
+    /// <param name="builder">The source builder.</param>
+    /// <param name="stream">The stream declaration.</param>
+    private static void AppendSubscription(StringBuilder builder, StreamInfo stream)
+    {
+        var typeName = stream.PropertyType!.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+        var fieldName = GetSubjectFieldName(stream.PropertyName);
+
+        _ = builder.AppendLine("#if REACTIVE_SHIM");
+        AppendSubscriptionCore(builder, stream, typeName, fieldName, "global::ReactiveUI.Primitives.SubscribeExtensions");
+        _ = builder.AppendLine("#else");
+        AppendSubscriptionCore(builder, stream, typeName, fieldName, "global::ReactiveUI.Primitives.SubscribeExtensions");
+        _ = builder.AppendLine("#endif");
+    }
+
+    /// <summary>Appends the subscription body shared by lean and reactive builds.</summary>
+    /// <param name="builder">The source builder.</param>
+    /// <param name="stream">The stream declaration.</param>
+    /// <param name="typeName">The generated value type name.</param>
+    /// <param name="fieldName">The generated backing signal field name.</param>
+    /// <param name="extensionsType">The extension type that owns the generated subscribe call.</param>
+    private static void AppendSubscriptionCore(StringBuilder builder, StreamInfo stream, string typeName, string fieldName, string extensionsType)
+    {
+        _ = builder.Append("        disposables.Add(")
+            .Append(extensionsType)
+            .Append(".Subscribe(")
+            .Append(stream.SourceExpression)
+            .AppendLine(", __serialPortRxValue =>");
+        _ = builder.AppendLine("        {");
+        _ = builder.Append("            if (global::CP.IO.Ports.SourceGeneration.SerialPortReactiveValueConverter.TryConvertMatch<")
+            .Append(typeName)
+            .Append(">(__serialPortRxValue, ")
+            .Append(ToLiteral(stream.Pattern))
+            .Append(", ")
+            .Append(ToLiteral(stream.GroupName))
+            .Append(", ")
+            .Append(stream.GroupNumber.ToString(System.Globalization.CultureInfo.InvariantCulture))
+            .Append(", ")
+            .Append(stream.IgnoreCase ? "true" : "false")
+            .AppendLine(", out var __serialPortRxConverted))");
+        _ = builder.AppendLine("            {");
+        _ = builder.Append("                ").Append(stream.PropertyName).AppendLine(" = __serialPortRxConverted;");
+        _ = builder.Append("                ").Append(fieldName).AppendLine(".OnNext(__serialPortRxConverted);");
+        _ = builder.AppendLine("            }");
+        _ = builder.AppendLine("        }));");
+    }
+
+    /// <summary>Gets the generated backing signal field name.</summary>
+    /// <param name="propertyName">The generated property name.</param>
+    /// <returns>The generated backing signal field name.</returns>
+    private static string GetSubjectFieldName(string propertyName) =>
+        "__serialPortRx" + propertyName + "Subject";
+
+    /// <summary>Formats a nullable string as C# source.</summary>
+    /// <param name="value">The nullable value to format.</param>
+    /// <returns>The generated literal.</returns>
+    private static string ToLiteral(string? value) =>
+        value is null ? "null" : SymbolDisplay.FormatLiteral(value, quote: true);
+
+    /// <summary>Sanitizes a symbol display string for use as a generated hint name.</summary>
+    /// <param name="value">The symbol display string.</param>
+    /// <returns>The sanitized hint name.</returns>
+    private static string SanitizeHintName(string value)
+    {
+        var builder = new StringBuilder(value.Length);
+        foreach (var character in value)
+        {
+            _ = builder.Append(char.IsLetterOrDigit(character) ? character : '_');
+        }
+
+        return builder.ToString();
+    }
+
+    /// <summary>Gets the first known source location for a symbol.</summary>
+    /// <param name="symbol">The symbol to inspect.</param>
+    /// <returns>The first source location when available; otherwise, <see langword="null"/>.</returns>
+    private static Location? GetFirstLocation(ISymbol symbol)
+    {
+        var locations = symbol.Locations;
+        return locations.Length > 0 ? locations[0] : null;
+    }
+
+    /// <summary>Describes one generated serial stream.</summary>
+    private sealed class StreamInfo
+    {
+        /// <summary>Initializes a new instance of the <see cref="StreamInfo"/> class.</summary>
+        /// <param name="targetType">The target class symbol.</param>
+        /// <param name="propertyName">The generated property name.</param>
+        /// <param name="propertyType">The generated property type.</param>
+        /// <param name="pattern">The optional regular expression pattern.</param>
+        /// <param name="sourceExpression">The generated observable source expression.</param>
+        /// <param name="groupName">The named regular expression group.</param>
+        /// <param name="groupNumber">The fallback regular expression group number.</param>
+        /// <param name="ignoreCase">Whether matching should ignore case.</param>
+        /// <param name="location">The attribute location used for diagnostics.</param>
+        public StreamInfo(
+            INamedTypeSymbol targetType,
+            string propertyName,
+            ITypeSymbol? propertyType,
+            string? pattern,
+            string sourceExpression,
+            string? groupName,
+            int groupNumber,
+            bool ignoreCase,
+            Location? location)
+        {
+            TargetType = targetType;
+            PropertyName = propertyName;
+            PropertyType = propertyType;
+            Pattern = pattern;
+            SourceExpression = sourceExpression;
+            GroupName = groupName;
+            GroupNumber = groupNumber;
+            IgnoreCase = ignoreCase;
+            Location = location;
+        }
+
+        /// <summary>Gets the target class symbol.</summary>
+        public INamedTypeSymbol TargetType { get; }
+
+        /// <summary>Gets the generated property name.</summary>
+        public string PropertyName { get; }
+
+        /// <summary>Gets the generated property type.</summary>
+        public ITypeSymbol? PropertyType { get; }
+
+        /// <summary>Gets the optional regular expression pattern.</summary>
+        public string? Pattern { get; }
+
+        /// <summary>Gets the generated observable source expression.</summary>
+        public string SourceExpression { get; }
+
+        /// <summary>Gets the named regular expression group.</summary>
+        public string? GroupName { get; }
+
+        /// <summary>Gets the fallback regular expression group number.</summary>
+        public int GroupNumber { get; }
+
+        /// <summary>Gets a value indicating whether matching should ignore case.</summary>
+        public bool IgnoreCase { get; }
+
+        /// <summary>Gets the attribute location used for diagnostics.</summary>
+        public Location? Location { get; }
+    }
 }

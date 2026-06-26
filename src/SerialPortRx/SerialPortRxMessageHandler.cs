@@ -1,29 +1,35 @@
-﻿// Copyright (c) Chris Pulman. All rights reserved.
-// Licensed under the MIT license. See LICENSE file in the project root for full license information.
-
-using System;
-using System.Collections.Concurrent;
-using System.Reactive.Disposables;
-using System.Threading;
-using System.Threading.Tasks;
+// Copyright (c) 2022-2026 Chris Pulman. All rights reserved.
+// Chris Pulman licenses this file to you under the MIT license.
+// See the LICENSE file in the project root for full license information.
 
 namespace CP.IO.Ports;
 
-/// <summary>
-/// SerialPortRxMessageHandler.
-/// </summary>
+/// <summary>Coordinates command requests and responses over a reactive serial port.</summary>
 public sealed class SerialPortRxMessageHandler : IDisposable
 {
+    /// <summary>Pending command requests awaiting response lines.</summary>
     private readonly ConcurrentQueue<PendingRequest> _pending = new();
+
+    /// <summary>The serial port used to send commands and receive responses.</summary>
     private readonly SerialPortRx _port;
+
+    /// <summary>Subscriptions owned by the message handler.</summary>
     private readonly CompositeDisposable _disposables = [];
+
+    /// <summary>Synchronizes request queue and polling state changes.</summary>
+#if NET9_0_OR_GREATER
+    private readonly Lock _sync = new();
+#else
     private readonly object _sync = new();
+#endif
+
+    /// <summary>Cancellation source for the active polling loop.</summary>
     private CancellationTokenSource? _pollingCts;
+
+    /// <summary>The active polling task.</summary>
     private Task? _pollingTask;
 
-    /// <summary>
-    /// Initializes a new instance of the <see cref="SerialPortRxMessageHandler" /> class.
-    /// </summary>
+    /// <summary>Initializes a new instance of the <see cref="SerialPortRxMessageHandler" /> class.</summary>
     /// <param name="port">The port.</param>
     /// <param name="errorLine">The error line.</param>
     public SerialPortRxMessageHandler(SerialPortRx port, params string[]? errorLine)
@@ -42,17 +48,13 @@ public sealed class SerialPortRxMessageHandler : IDisposable
     /// </summary>
     public string? ResponsePrefix { get; set; }
 
-    /// <summary>
-    /// Gets or sets the polling task.
-    /// </summary>
+    /// <summary>Gets or sets the polling task.</summary>
     /// <value>
     /// The polling task.
     /// </value>
     public Func<Task>? PollingTasks { get; set; }
 
-    /// <summary>
-    /// Requests the asynchronous.
-    /// </summary>
+    /// <summary>Requests the asynchronous.</summary>
     /// <param name="cmd">The command.</param>
     /// <exception cref="InvalidOperationException">Not connected.</exception>
     /// <returns>A <see cref="Task"/> representing the asynchronous operation.</returns>
@@ -75,9 +77,7 @@ public sealed class SerialPortRxMessageHandler : IDisposable
         }
     }
 
-    /// <summary>
-    /// Requests the asynchronous.
-    /// </summary>
+    /// <summary>Requests the asynchronous.</summary>
     /// <param name="cmd">The command.</param>
     /// <param name="apply">The apply response action.</param>
     /// <returns>
@@ -104,21 +104,19 @@ public sealed class SerialPortRxMessageHandler : IDisposable
         }
     }
 
-    /// <summary>
-    /// Exectute With the polling stopped.
-    /// </summary>
+    /// <summary>Exectute With the polling stopped.</summary>
     /// <param name="action">The action.</param>
     /// <returns>
     /// A <see cref="Task" /> representing the asynchronous operation.
     /// </returns>
     public async Task WithPollingStopped(Func<Task> action)
     {
-        if (action == null)
+        if (action is null)
         {
             return;
         }
 
-        var wasPolling = _pollingTask != null;
+        var wasPolling = _pollingTask is not null;
         if (wasPolling)
         {
             StopPolling();
@@ -137,20 +135,12 @@ public sealed class SerialPortRxMessageHandler : IDisposable
         }
     }
 
-    /// <summary>
-    /// Starts the polling.
-    /// </summary>
+    /// <summary>Starts the polling.</summary>
     public void StartPolling()
     {
         StopPolling();
-        _pollingCts = new CancellationTokenSource();
-        var cts = _pollingCts;
-        if (cts == null)
-        {
-            return;
-        }
-
-        var token = cts.Token;
+        _pollingCts = new();
+        var token = _pollingCts.Token;
         _pollingTask = Task.Run(
             async () =>
             {
@@ -158,14 +148,18 @@ public sealed class SerialPortRxMessageHandler : IDisposable
                 {
                     try
                     {
-                        if (PollingTasks != null && _port.IsOpen)
+                        if (PollingTasks is not null && _port.IsOpen)
                         {
                             await PollingTasks().ConfigureAwait(false);
                         }
                     }
-                    catch
+                    catch (OperationCanceledException) when (token.IsCancellationRequested)
                     {
-                        // ignore
+                        return;
+                    }
+                    catch (Exception ex)
+                    {
+                        CompletePendingWithException(ex);
                     }
 
                     await Task.Delay(100, token).ConfigureAwait(false);
@@ -174,9 +168,7 @@ public sealed class SerialPortRxMessageHandler : IDisposable
             token);
     }
 
-    /// <summary>
-    /// Stops the polling.
-    /// </summary>
+    /// <summary>Stops the polling.</summary>
     public void StopPolling()
     {
         var cts = _pollingCts;
@@ -186,9 +178,9 @@ public sealed class SerialPortRxMessageHandler : IDisposable
             cts?.Cancel();
             _pollingTask?.Wait(TimeSpan.FromSeconds(1));
         }
-        catch
+        catch (AggregateException ex)
         {
-            // ignore
+            CompletePendingWithException(ex.Flatten());
         }
         finally
         {
@@ -197,9 +189,7 @@ public sealed class SerialPortRxMessageHandler : IDisposable
         }
     }
 
-    /// <summary>
-    /// Sends the command asynchronous.
-    /// </summary>
+    /// <summary>Sends the command asynchronous.</summary>
     /// <param name="fullCmd">The full command.</param>
     /// <returns>
     /// A <see cref="Task" /> representing the asynchronous operation.
@@ -221,15 +211,24 @@ public sealed class SerialPortRxMessageHandler : IDisposable
         return Task.CompletedTask;
     }
 
-    /// <summary>
-    /// Performs application-defined tasks associated with freeing, releasing, or resetting unmanaged resources.
-    /// </summary>
+    /// <summary>Performs application-defined tasks associated with freeing, releasing, or resetting unmanaged resources.</summary>
     public void Dispose()
     {
         StopPolling();
         _disposables.Dispose();
     }
 
+    /// <summary>Determines whether a response matches a sent command echo.</summary>
+    /// <param name="trimmed">The trimmed response line.</param>
+    /// <param name="sent">The sent command text.</param>
+    /// <returns><see langword="true"/> when the response matches the sent command.</returns>
+    private static bool IsEchoMatch(string trimmed, string sent) =>
+        string.Equals(trimmed, sent, StringComparison.OrdinalIgnoreCase) ||
+        (trimmed.Length >= sent.Length && trimmed.EndsWith(sent, StringComparison.OrdinalIgnoreCase));
+
+    /// <summary>Processes a received response line.</summary>
+    /// <param name="response">The received response line.</param>
+    /// <param name="errorLine">The configured error prefixes.</param>
     private void OnLineReceived(string response, string[]? errorLine)
     {
         if (string.IsNullOrWhiteSpace(response))
@@ -238,78 +237,115 @@ public sealed class SerialPortRxMessageHandler : IDisposable
         }
 
         var trimmed = response.Trim();
-
-        // Ignore command echo lines (device may echo the exact command before sending data)
-        if (_pending.TryPeek(out var head))
+        if (IsEchoLine(trimmed))
         {
-            var sent = head.Command?.Trim();
-            if (!string.IsNullOrEmpty(sent))
-            {
-                // Match direct or axis-suffixed echoes
-                if (string.Equals(trimmed, sent, StringComparison.OrdinalIgnoreCase) ||
-                    (trimmed.Length >= sent!.Length && trimmed.EndsWith(sent, StringComparison.OrdinalIgnoreCase)))
-                {
-                    return;
-                }
-
-                // Match echoes without prefix if device omits it
-                var prefix = ResponsePrefix;
-                if (!string.IsNullOrEmpty(prefix) && sent.StartsWith(prefix, StringComparison.Ordinal))
-                {
-                    var sentNoAxis = sent[prefix!.Length..].TrimStart();
-                    if (string.Equals(trimmed, sentNoAxis, StringComparison.OrdinalIgnoreCase) ||
-                        (trimmed.Length >= sentNoAxis.Length && trimmed.EndsWith(sentNoAxis, StringComparison.OrdinalIgnoreCase)))
-                    {
-                        return;
-                    }
-                }
-            }
+            return;
         }
 
+        if (TryCompleteError(trimmed, errorLine))
+        {
+            return;
+        }
+
+        CompleteNextPending(trimmed);
+    }
+
+    /// <summary>Determines whether a received line is an echo for the pending command.</summary>
+    /// <param name="trimmed">The trimmed response line.</param>
+    /// <returns><see langword="true"/> when the response is an echo line.</returns>
+    private bool IsEchoLine(string trimmed)
+    {
+        if (!_pending.TryPeek(out var head))
+        {
+            return false;
+        }
+
+        var sentCandidate = head.Command?.Trim();
+        if (string.IsNullOrEmpty(sentCandidate))
+        {
+            return false;
+        }
+
+        var sent = sentCandidate!;
+        if (IsEchoMatch(trimmed, sent))
+        {
+            return true;
+        }
+
+        var prefixCandidate = ResponsePrefix;
+        if (string.IsNullOrEmpty(prefixCandidate))
+        {
+            return false;
+        }
+
+        var prefix = prefixCandidate!;
+        if (!sent.StartsWith(prefix, StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        var sentNoAxis = sent[prefix.Length..].TrimStart();
+        return IsEchoMatch(trimmed, sentNoAxis);
+    }
+
+    /// <summary>Completes the next pending request as an error when the response matches an error prefix.</summary>
+    /// <param name="trimmed">The trimmed response line.</param>
+    /// <param name="errorLine">The configured error prefixes.</param>
+    /// <returns><see langword="true"/> when an error response was handled.</returns>
+    private bool TryCompleteError(string trimmed, string[]? errorLine)
+    {
         foreach (var error in errorLine ?? [])
         {
-            if (!string.IsNullOrWhiteSpace(error) && trimmed.StartsWith(error, StringComparison.OrdinalIgnoreCase))
+            if (!string.IsNullOrWhiteSpace(error) && trimmed.StartsWith(error!, StringComparison.OrdinalIgnoreCase))
             {
                 if (_pending.TryDequeue(out var errPending))
                 {
-                    try
-                    {
-                        errPending.Completion.TrySetException(new InvalidOperationException(trimmed));
-                    }
-                    catch
-                    {
-                    }
+                    _ = errPending.Completion.TrySetException(new InvalidOperationException(trimmed));
                 }
 
-                return;
+                return true;
             }
         }
 
-        if (_pending.TryDequeue(out var pending))
+        return false;
+    }
+
+    /// <summary>Applies a normal response to the next pending request.</summary>
+    /// <param name="trimmed">The trimmed response line.</param>
+    private void CompleteNextPending(string trimmed)
+    {
+        if (!_pending.TryDequeue(out var pending))
         {
-            try
-            {
-                // Strip prefix if present
-                var toApply = trimmed;
-                var prefix = ResponsePrefix;
-                if (!string.IsNullOrEmpty(prefix) && toApply.StartsWith(prefix, StringComparison.Ordinal))
-                {
-                    toApply = toApply[prefix!.Length..].TrimStart();
-                }
+            return;
+        }
 
-                pending.Apply(toApply);
-            }
-            catch
+        try
+        {
+            var toApply = trimmed;
+            var prefix = ResponsePrefix;
+            if (!string.IsNullOrEmpty(prefix) && toApply.StartsWith(prefix!, StringComparison.Ordinal))
             {
+                toApply = toApply[prefix!.Length..].TrimStart();
             }
 
-            try
-            {
-                pending.Completion.TrySetResult(true);
-            }
-            catch
-            {
-            }
+            pending.Apply(toApply);
+        }
+        catch (Exception ex)
+        {
+            _ = pending.Completion.TrySetException(ex);
+            return;
+        }
+
+        _ = pending.Completion.TrySetResult(true);
+    }
+
+    /// <summary>Completes all pending requests with an exception.</summary>
+    /// <param name="exception">The exception to publish to pending requests.</param>
+    private void CompletePendingWithException(Exception exception)
+    {
+        while (_pending.TryDequeue(out var pending))
+        {
+            _ = pending.Completion.TrySetException(exception);
         }
     }
 }

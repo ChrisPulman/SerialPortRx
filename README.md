@@ -6,7 +6,7 @@ A Reactive Serial, TCP, and UDP I/O library that exposes incoming data as IObser
 [![NuGet Stats](https://img.shields.io/nuget/v/SerialPortRx.svg)](https://www.nuget.org/packages/SerialPortRx)
 
 ## Features
-- SerialPortRx: Reactive wrapper for System.IO.Ports.SerialPort
+- SerialPortRx: Reactive wrapper for System.IO.Ports.SerialPort using ReactiveUI.Primitives
 - UdpClientRx and TcpClientRx: Reactive wrappers exposing a common IPortRx interface
 - Observables:
   - DataReceived: IObservable<char> for serial text flow
@@ -26,46 +26,62 @@ A Reactive Serial, TCP, and UDP I/O library that exposes incoming data as IObser
   - UdpClientRx.DataReceivedBatches: IObservable<byte[]> per received datagram
 - Source generator support:
   - SerialPortReactiveStream attributes generate properties, IObservable<T>, IObservableAsync<T>, and a connection method for serial protocol values.
+  - ReactiveUI.Primitives bridge generators provide R3/R3Async conversion methods when consuming projects reference R3 packages.
 - Helpers:
   - PortNames(): reactive port enumeration with change notifications
   - BufferUntil(): message framing between start and end delimiters with timeout
   - WhileIsOpen(): periodic observable that fires only while a port is open
-- Cross-targeted: netstandard2.0, net8.0, net9.0, net10.0, and Windows-specific TFMs
+- Cross-targeted: net8.0, net9.0, net10.0, .NET Framework, and Windows-specific TFMs
 
 ## Installation
-- dotnet add package SerialPortRx
+```bash
+dotnet add package SerialPortRx
+```
+
+Use the default `SerialPortRx` package for new code. Version 5.0.x is a breaking release that replaces direct `System.Reactive` usage with `ReactiveUI.Primitives`, including Primitives signals, async observables, sequencers, and disposable helpers.
+
+Existing Rx consumers should install the compatibility package:
+
+```bash
+dotnet add package SerialPortRx.Reactive
+```
+
+`SerialPortRx.Reactive` shares the same source as `SerialPortRx` and uses ReactiveUI.Primitives `.Reactive` package variants so existing `System.Reactive` `Unit`, `IScheduler`, and Rx operator conventions remain available.
 
 The package includes the SerialPortRx source generator as an analyzer. No separate generator package is required.
 
+### Breaking changes in 5.0.x
+- The main `SerialPortRx` package no longer depends on `System.Reactive`; it is based on `ReactiveUI.Primitives`.
+- `Unit`, scheduler, subject, and disposable implementation details are now Primitives-based in the default package.
+- Use `SerialPortRx.Reactive` when an application or library must keep System.Reactive-facing APIs and Rx scheduler/unit conventions.
+- R3 support is provided through the ReactiveUI.Primitives source-generator bridge. When a consuming project references R3 or R3Async alongside SerialPortRx, the bridge generator emits conversion methods at the boundary between Primitives streams and R3 streams.
+- The repository solution entry point is now `src/SerialPortRx.slnx`.
+
 ## Supported target frameworks
-- netstandard2.0
 - net8.0, net9.0, net10.0
+- net462, net472, net481
 - net8.0-windows10.0.19041.0, net9.0-windows10.0.19041.0, net10.0-windows10.0.19041.0 (adds Windows-only APIs guarded by HasWindows)
 
 ## Quick start (Serial)
 ```csharp
 using System;
-using System.Reactive.Disposables;
-using System.Reactive.Linq;
 using CP.IO.Ports;
-using ReactiveMarbles.Extensions;
+using ReactiveUI.Primitives;
 
-var disposables = new CompositeDisposable();
 var port = new SerialPortRx("COM3", 115200) { ReadTimeout = -1, WriteTimeout = -1 };
 
 // Observe line/state/errors
-port.IsOpenObservable.Subscribe(isOpen => Console.WriteLine($"Open: {isOpen}")).DisposeWith(disposables);
-port.ErrorReceived.Subscribe(ex => Console.WriteLine($"Error: {ex.Message}")).DisposeWith(disposables);
+using var openSubscription = port.IsOpenObservable.Subscribe(isOpen => Console.WriteLine($"Open: {isOpen}"));
+using var errorSubscription = port.ErrorReceived.Subscribe(ex => Console.WriteLine($"Error: {ex.Message}"));
 
 // Raw character stream
-port.DataReceived.Subscribe(ch => Console.Write(ch)).DisposeWith(disposables);
+using var dataSubscription = port.DataReceived.Subscribe(ch => Console.Write(ch));
 
 await port.Open();
 port.WriteLine("AT");
 
 // Close when done
 port.Close();
-disposables.Dispose();
 ```
 
 ## Discovering serial ports
@@ -78,37 +94,40 @@ SerialPortRx.PortNames(pollInterval: 500)
 To auto-connect when a specific COM port appears:
 ```csharp
 var target = "COM3";
-var comDisposables = new CompositeDisposable();
+var portDisposables = new List<IDisposable>();
 
-SerialPortRx.PortNames()
-    .Do(names =>
+using var portNamesSubscription = SerialPortRx.PortNames()
+    .Subscribe(names =>
     {
-        if (comDisposables.Count == 0 && Array.Exists(names, n => string.Equals(n, target, StringComparison.OrdinalIgnoreCase)))
+        if (portDisposables.Count == 0 && Array.Exists(names, n => string.Equals(n, target, StringComparison.OrdinalIgnoreCase)))
         {
             var port = new SerialPortRx(target, 115200);
-            port.DisposeWith(comDisposables);
+            portDisposables.Add(port);
 
-            port.ErrorReceived.Subscribe(Console.WriteLine).DisposeWith(comDisposables);
-            port.IsOpenObservable.Subscribe(open => Console.WriteLine($"{target}: {(open ? "Open" : "Closed")}"))
-                .DisposeWith(comDisposables);
+            portDisposables.Add(port.ErrorReceived.Subscribe(Console.WriteLine));
+            portDisposables.Add(port.IsOpenObservable.Subscribe(open => Console.WriteLine($"{target}: {(open ? "Open" : "Closed")}")));
 
             port.Open();
         }
         else if (!Array.Exists(names, n => string.Equals(n, target, StringComparison.OrdinalIgnoreCase)))
         {
-            comDisposables.Dispose(); // auto-cleanup if device removed
+            foreach (var disposable in portDisposables)
+            {
+                disposable.Dispose();
+            }
+
+            portDisposables.Clear();
         }
-    })
-    .ForEach()
-    .Subscribe();
+    });
 ```
 
 ## Async observables
-SerialPortRx uses ReactiveUI.Extensions async observables for consumers that need asynchronous observer callbacks and full `IObservableAsync<T>` operators.
+SerialPortRx uses ReactiveUI.Primitives async observables for consumers that need asynchronous observer callbacks and full `IObservableAsync<T>` operators.
 
 ```csharp
 using CP.IO.Ports;
-using ReactiveUI.Extensions.Async;
+using ReactiveUI.Primitives;
+using ReactiveUI.Primitives.Async;
 
 var port = new SerialPortRx("COM3", 115200);
 
@@ -294,7 +313,8 @@ The package includes a source generator that can turn serial protocol messages i
 ```csharp
 using CP.IO.Ports;
 using CP.IO.Ports.SourceGeneration;
-using ReactiveUI.Extensions.Async;
+using ReactiveUI.Primitives;
+using ReactiveUI.Primitives.Async;
 
 [SerialPortReactiveStream("Temperature", typeof(double), @"^TEMP:(?<value>-?\d+(\.\d+)?)$")]
 [SerialPortReactiveStream("DeviceReady", typeof(bool), @"^READY:(?<value>0|1)$", IgnoreCase = true)]
@@ -321,6 +341,26 @@ Generated members:
 - `ConnectReactiveSerialPort(ISerialPortRx serialPort)` to wire the generated bindings
 
 By default, generated bindings listen to `ISerialPortRx.Lines`. Set `Source` to `SerialPortReactiveSource.DataReceived`, `DataReceivedBytes`, `BytesReceived`, or `IsOpen` when a property should be driven by a different stream.
+
+### R3 consumers
+The generated members expose `IObservable<T>` and `IObservableAsync<T>`. When the consuming project also references R3 or R3Async, the ReactiveUI.Primitives bridge generator emits conversion extensions in `ReactiveUI.Primitives.R3Bridge`, so R3 support can stay at the application boundary without changing the generated serial binding code.
+
+```csharp
+using CP.IO.Ports;
+using CP.IO.Ports.SourceGeneration;
+using ReactiveUI.Primitives;
+using ReactiveUI.Primitives.R3Bridge;
+
+[SerialPortReactiveStream("Temperature", typeof(double), @"^TEMP:(?<value>-?\d+(\.\d+)?)$")]
+public partial class DeviceState
+{
+}
+
+var state = new DeviceState();
+
+// Available when R3 is referenced by the consuming project.
+var temperatureAsR3 = state.TemperatureObservable.AsR3Observable();
+```
 
 ## Writing
 - `port.Write(string text)` - Write a string
@@ -431,11 +471,10 @@ Serial integration tests expect a virtual COM port pair named `COM1` and `COM2`.
 ## Example program (complete)
 ```csharp
 using System;
+using System.Collections.Generic;
 using System.Linq;
-using System.Reactive.Disposables;
-using System.Reactive.Linq;
 using CP.IO.Ports;
-using ReactiveMarbles.Extensions;
+using ReactiveUI.Primitives;
 
 internal static class Program
 {
@@ -443,45 +482,56 @@ internal static class Program
     {
         const string comPortName = "COM1";
         const string dataToWrite = "DataToWrite";
-        var dis = new CompositeDisposable();
+        var rootDisposables = new List<IDisposable>();
 
         var startChar = 0x21.AsObservable(); // '!'
         var endChar = 0x0a.AsObservable();   // '\n'
 
-        var comdis = new CompositeDisposable();
+        var portDisposables = new List<IDisposable>();
 
-        SerialPortRx.PortNames().Do(names =>
+        using var portNamesSubscription = SerialPortRx.PortNames().Subscribe(names =>
         {
-            if (comdis.Count == 0 && names.Contains(comPortName))
+            if (portDisposables.Count == 0 && names.Contains(comPortName))
             {
                 var port = new SerialPortRx(comPortName, 9600);
-                port.DisposeWith(comdis);
+                portDisposables.Add(port);
 
-                port.ErrorReceived.Subscribe(Console.WriteLine).DisposeWith(comdis);
-                port.IsOpenObservable.Subscribe(open => Console.WriteLine($"{comPortName} {(open ? "Open" : "Closed")}"))
-                    .DisposeWith(comdis);
+                portDisposables.Add(port.ErrorReceived.Subscribe(Console.WriteLine));
+                portDisposables.Add(port.IsOpenObservable.Subscribe(open => Console.WriteLine($"{comPortName} {(open ? "Open" : "Closed")}")));
 
-                port.DataReceived
+                portDisposables.Add(port.DataReceived
                     .BufferUntil(startChar, endChar, 100)
-                    .Subscribe(data => Console.WriteLine($"Data: {data}"))
-                    .DisposeWith(comdis);
+                    .Subscribe(data => Console.WriteLine($"Data: {data}")));
 
-                port.WhileIsOpen(TimeSpan.FromMilliseconds(500))
-                    .Subscribe(_ => port.Write(dataToWrite))
-                    .DisposeWith(comdis);
+                portDisposables.Add(port.WhileIsOpen(TimeSpan.FromMilliseconds(500))
+                    .Subscribe(_ => port.Write(dataToWrite)));
 
-                port.Open().Wait();
+                port.Open().GetAwaiter().GetResult();
             }
             else if (!names.Contains(comPortName))
             {
-                comdis.Dispose();
+                foreach (var disposable in portDisposables)
+                {
+                    disposable.Dispose();
+                }
+
+                portDisposables.Clear();
                 Console.WriteLine($"Port {comPortName} Disposed");
             }
-        }).ForEach().Subscribe(Console.WriteLine).DisposeWith(dis);
+        });
+
+        rootDisposables.Add(portNamesSubscription);
 
         Console.ReadLine();
-        comdis.Dispose();
-        dis.Dispose();
+        foreach (var disposable in portDisposables)
+        {
+            disposable.Dispose();
+        }
+
+        foreach (var disposable in rootDisposables)
+        {
+            disposable.Dispose();
+        }
     }
 }
 ```

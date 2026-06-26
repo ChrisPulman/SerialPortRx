@@ -1,0 +1,21 @@
+<Solution>
+  <Configurations>
+    <Platform Name="Any CPU" />
+    <Platform Name="x64" />
+    <Platform Name="x86" />
+  </Configurations>
+  <Folder Name="/ConfigFiles/">
+    <File Path="../.editorconfig" />
+    <File Path="../.gitattributes" />
+    <File Path="../.github/workflows/BuildOnly.yml" />
+    <File Path="../.github/workflows/dotnet.yml" />
+    <File Path="../.gitignore" />
+    <File Path="../Directory.Build.props" />
+    <File Path="../README.md" />
+    <File Path="../version.json" />
+  </Folder>
+  <Project Path="SerialPortRx.Reactive/SerialPortRx.Reactive.csproj" />
+  <Project Path="SerialPortRx.SourceGenerators/SerialPortRx.SourceGenerators.csproj" />
+  <Project Path="SerialPortRx.Test/SerialPortRx.Test.csproj" />
+  <Project Path="SerialPortRx/SerialPortRx.csproj" />
+</Solution>
