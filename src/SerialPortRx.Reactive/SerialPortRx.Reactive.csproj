@@ -19,7 +19,7 @@
 
   <ItemGroup>
     <PackageReference Include="ReactiveUI.Primitives" Version="5.8.0" ExcludeAssets="analyzers" />
-    <PackageReference Include="ReactiveUI.Primitives.Async" Version="5.7.0" ExcludeAssets="analyzers" />
+    <PackageReference Include="ReactiveUI.Primitives.Async" Version="5.8.0" ExcludeAssets="analyzers" />
     <PackageReference Include="ReactiveUI.Primitives.Extensions" Version="5.8.0" ExcludeAssets="analyzers" />
     <PackageReference Include="ReactiveUI.Primitives.Reactive" Version="5.8.0" ExcludeAssets="analyzers" />
     <PackageReference Include="ReactiveUI.Primitives.Async.Reactive" Version="5.8.0" ExcludeAssets="analyzers" />
