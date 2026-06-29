@@ -45,6 +45,9 @@
 
   <ItemGroup>
     <ProjectReference Include="..\SerialPortRx\SerialPortRx.csproj" />
+    <ProjectReference Include="..\SerialPortRx.Reactive\SerialPortRx.Reactive.csproj"
+                      ReferenceOutputAssembly="false"
+                      PrivateAssets="all" />
     <ProjectReference Include="..\SerialPortRx.SourceGenerators\SerialPortRx.SourceGenerators.csproj" />
   </ItemGroup>
 

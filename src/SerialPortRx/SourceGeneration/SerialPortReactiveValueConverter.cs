@@ -2,7 +2,11 @@
 // Chris Pulman licenses this file to you under the MIT license.
 // See the LICENSE file in the project root for full license information.
 
+#if REACTIVE_SHIM
+namespace CP.IO.Ports.Reactive.SourceGeneration;
+#else
 namespace CP.IO.Ports.SourceGeneration;
+#endif
 
 /// <summary>Converts generated serial stream values into strongly typed reactive properties.</summary>
 public static class SerialPortReactiveValueConverter
