@@ -9,16 +9,17 @@ namespace CP.IO.Ports.Tests;
 public sealed class NetworkPortRxTests
 {
     /// <summary>Verifies TCP loopback data is published to byte and batch streams.</summary>
+    /// <param name="cancellationToken">The TUnit timeout cancellation token.</param>
     /// <returns>A task representing the asynchronous unit test.</returns>
     [Test]
     [Timeout(5000)]
-    public async Task TcpClientRx_Open_ReadsLoopbackBytes()
+    public async Task TcpClientRx_Open_ReadsLoopbackBytes(CancellationToken cancellationToken)
     {
         using var listener = new TcpListener(IPAddress.Loopback, 0);
         listener.Start();
         var endpoint = (IPEndPoint)listener.LocalEndpoint;
         using var client = new TcpClientRx();
-        var acceptTask = listener.AcceptTcpClientAsync();
+        var acceptTask = listener.AcceptTcpClientAsync(cancellationToken);
 
         client.Connect(IPAddress.Loopback, endpoint.Port);
         using var server = await acceptTask;
@@ -40,8 +41,8 @@ public sealed class NetworkPortRxTests
 
         await client.Open();
         byte[] payload = [1, 2, 3];
-        await server.GetStream().WriteAsync(payload);
-        await received.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        await server.GetStream().WriteAsync(payload, cancellationToken);
+        await received.Task.WaitAsync(TimeSpan.FromSeconds(2), cancellationToken);
 
         await Assert.That(values.Count).IsEqualTo(3);
         await Assert.That(values[0]).IsEqualTo(1);
@@ -53,23 +54,24 @@ public sealed class NetworkPortRxTests
     }
 
     /// <summary>Verifies TCP Write sends data to the connected socket.</summary>
+    /// <param name="cancellationToken">The TUnit timeout cancellation token.</param>
     /// <returns>A task representing the asynchronous unit test.</returns>
     [Test]
     [Timeout(5000)]
-    public async Task TcpClientRx_Write_SendsBytes()
+    public async Task TcpClientRx_Write_SendsBytes(CancellationToken cancellationToken)
     {
         using var listener = new TcpListener(IPAddress.Loopback, 0);
         listener.Start();
         var endpoint = (IPEndPoint)listener.LocalEndpoint;
         using var client = new TcpClientRx();
-        var acceptTask = listener.AcceptTcpClientAsync();
+        var acceptTask = listener.AcceptTcpClientAsync(cancellationToken);
 
         client.Connect(IPAddress.Loopback, endpoint.Port);
         using var server = await acceptTask;
         var buffer = new byte[3];
 
         client.Write([9, 8, 7], 0, 3);
-        var bytesRead = await server.GetStream().ReadAsync(buffer);
+        var bytesRead = await server.GetStream().ReadAsync(buffer, cancellationToken);
 
         await Assert.That(bytesRead).IsEqualTo(3);
         await Assert.That(buffer[0]).IsEqualTo((byte)9);
@@ -78,10 +80,11 @@ public sealed class NetworkPortRxTests
     }
 
     /// <summary>Verifies UDP loopback datagrams are published to byte and batch streams.</summary>
+    /// <param name="cancellationToken">The TUnit timeout cancellation token.</param>
     /// <returns>A task representing the asynchronous unit test.</returns>
     [Test]
     [Timeout(5000)]
-    public async Task UdpClientRx_Open_ReadsLoopbackDatagrams()
+    public async Task UdpClientRx_Open_ReadsLoopbackDatagrams(CancellationToken cancellationToken)
     {
         using var receiverSocket = new UdpClient(new IPEndPoint(IPAddress.Loopback, 0));
         var endpoint = (IPEndPoint)receiverSocket.Client.LocalEndPoint!;
@@ -110,9 +113,9 @@ public sealed class NetworkPortRxTests
 
         await receiver.Open();
         byte[] payload = [4, 5];
-        await sender.SendAsync(payload, payload.Length, endpoint);
-        await received.Task.WaitAsync(TimeSpan.FromSeconds(2));
-        await batchReceived.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        await sender.SendAsync(payload, endpoint, cancellationToken);
+        await received.Task.WaitAsync(TimeSpan.FromSeconds(2), cancellationToken);
+        await batchReceived.Task.WaitAsync(TimeSpan.FromSeconds(2), cancellationToken);
 
         await Assert.That(values.Count).IsEqualTo(2);
         await Assert.That(values[0]).IsEqualTo(4);

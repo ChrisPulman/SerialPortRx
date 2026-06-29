@@ -1,4 +1,4 @@
-﻿# SerialPortRx
+# SerialPortRx
 A Reactive Serial, TCP, and UDP I/O library that exposes incoming data as IObservable streams and accepts writes via simple methods. Ideal for event-driven, message-framed, and polling scenarios.
 
 [![SerialPortRx CI-Build](https://github.com/ChrisPulman/SerialPortRx/actions/workflows/dotnet.yml/badge.svg)](https://github.com/ChrisPulman/SerialPortRx/actions/workflows/dotnet.yml)
@@ -26,7 +26,6 @@ A Reactive Serial, TCP, and UDP I/O library that exposes incoming data as IObser
   - UdpClientRx.DataReceivedBatches: IObservable<byte[]> per received datagram
 - Source generator support:
   - SerialPortReactiveStream attributes generate properties, IObservable<T>, IObservableAsync<T>, and a connection method for serial protocol values.
-  - ReactiveUI.Primitives bridge generators provide R3/R3Async conversion methods when consuming projects reference R3 packages.
 - Helpers:
   - PortNames(): reactive port enumeration with change notifications
   - BufferUntil(): message framing between start and end delimiters with timeout
@@ -54,7 +53,7 @@ The package includes the SerialPortRx source generator as an analyzer. No separa
 - The main `SerialPortRx` package no longer depends on `System.Reactive`; it is based on `ReactiveUI.Primitives`.
 - `Unit`, scheduler, subject, and disposable implementation details are now Primitives-based in the default package.
 - Use `SerialPortRx.Reactive` when an application or library must keep System.Reactive-facing APIs and Rx scheduler/unit conventions.
-- R3 support is provided through the ReactiveUI.Primitives source-generator bridge. When a consuming project references R3 or R3Async alongside SerialPortRx, the bridge generator emits conversion methods at the boundary between Primitives streams and R3 streams.
+- ReactiveUI.Primitives analyzer assets are excluded from the SerialPortRx packages; no extra bridge generator package is included.
 - The repository solution entry point is now `src/SerialPortRx.slnx`.
 
 ## Supported target frameworks
@@ -341,26 +340,6 @@ Generated members:
 - `ConnectReactiveSerialPort(ISerialPortRx serialPort)` to wire the generated bindings
 
 By default, generated bindings listen to `ISerialPortRx.Lines`. Set `Source` to `SerialPortReactiveSource.DataReceived`, `DataReceivedBytes`, `BytesReceived`, or `IsOpen` when a property should be driven by a different stream.
-
-### R3 consumers
-The generated members expose `IObservable<T>` and `IObservableAsync<T>`. When the consuming project also references R3 or R3Async, the ReactiveUI.Primitives bridge generator emits conversion extensions in `ReactiveUI.Primitives.R3Bridge`, so R3 support can stay at the application boundary without changing the generated serial binding code.
-
-```csharp
-using CP.IO.Ports;
-using CP.IO.Ports.SourceGeneration;
-using ReactiveUI.Primitives;
-using ReactiveUI.Primitives.R3Bridge;
-
-[SerialPortReactiveStream("Temperature", typeof(double), @"^TEMP:(?<value>-?\d+(\.\d+)?)$")]
-public partial class DeviceState
-{
-}
-
-var state = new DeviceState();
-
-// Available when R3 is referenced by the consuming project.
-var temperatureAsR3 = state.TemperatureObservable.AsR3Observable();
-```
 
 ## Writing
 - `port.Write(string text)` - Write a string

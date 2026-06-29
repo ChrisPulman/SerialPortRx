@@ -1,0 +1,12 @@
+<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <Target Name="RemoveReactiveUIPrimitivesR3BridgeAnalyzers"
+          AfterTargets="ResolvePackageAssets"
+          BeforeTargets="CoreCompile;Csc">
+    <ItemGroup>
+      <ResolvedAnalyzers Remove="@(ResolvedAnalyzers)"
+                         Condition="'%(ResolvedAnalyzers.Filename)' == 'ReactiveUI.Primitives.R3Bridge.Generator'" />
+      <Analyzer Remove="@(Analyzer)"
+                Condition="'%(Analyzer.Filename)' == 'ReactiveUI.Primitives.R3Bridge.Generator'" />
+    </ItemGroup>
+  </Target>
+</Project>

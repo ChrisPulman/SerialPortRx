@@ -2,7 +2,6 @@
   <PropertyGroup>
     <TargetFrameworks>$(LibraryTargetFrameworks)</TargetFrameworks>
     <RootNamespace>CP.IO.Ports</RootNamespace>
-    <NoWarn>$(NoWarn);RCS1047</NoWarn>
   </PropertyGroup>
   <PropertyGroup Condition="$(TargetFramework.EndsWith('-windows10.0.19041.0')) or $(TargetFramework.StartsWith('net4'))">
     <DefineConstants>HasWindows</DefineConstants>
@@ -10,7 +9,7 @@
   
   <ItemGroup>
     <PackageReference Include="ReactiveUI.Primitives" Version="5.8.0" ExcludeAssets="analyzers" />
-    <PackageReference Include="ReactiveUI.Primitives.Async" Version="5.7.0" ExcludeAssets="analyzers" />
+    <PackageReference Include="ReactiveUI.Primitives.Async" Version="5.8.0" ExcludeAssets="analyzers" />
     <PackageReference Include="ReactiveUI.Primitives.Extensions" Version="5.8.0" ExcludeAssets="analyzers" />
     <PackageReference Include="System.IO.Ports" Version="10.0.9" />
   </ItemGroup>
@@ -46,12 +45,6 @@
     <Using Include="ReactiveUI.Primitives.Disposables.MultipleDisposable" Alias="CompositeDisposable" />
     <Using Include="ReactiveUI.Primitives.Disposables.Scope" Alias="Disposable" />
   </ItemGroup>
-
-  <Target Name="RemoveDuplicateReactiveUIPrimitivesAnalyzer" BeforeTargets="CoreCompile">
-    <ItemGroup>
-      <Analyzer Remove="$(NuGetPackageRoot)reactiveui.primitives.async\5.7.0\analyzers\dotnet\cs\ReactiveUI.Primitives.R3Bridge.Generator.dll" />
-    </ItemGroup>
-  </Target>
 
   <ItemGroup>
     <ProjectReference Include="..\SerialPortRx.SourceGenerators\SerialPortRx.SourceGenerators.csproj"

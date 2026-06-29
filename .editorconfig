@@ -2339,6 +2339,17 @@ end_of_line = lf
 [*.{cmd, bat}]
 end_of_line = crlf
 
+#############################################
+# Async observable API surface
+#############################################
+# These extension files intentionally expose IObservableAsync<T> bridge APIs.
+# RCS1047 only recognizes Task-like method bodies, so it treats async-observable
+# factory names as non-async methods even though the returned abstraction is async.
+[src/SerialPortRx/ObservableAsyncBridgeExtensions.cs]
+dotnet_diagnostic.RCS1047.severity = none
+
+[src/SerialPortRx/SerialPortRxMixins.cs]
+dotnet_diagnostic.RCS1047.severity = none
 
 #############################################
 # Test projects (TUnit)
