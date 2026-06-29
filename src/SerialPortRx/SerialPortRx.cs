@@ -2,7 +2,11 @@
 // Chris Pulman licenses this file to you under the MIT license.
 // See the LICENSE file in the project root for full license information.
 
+#if REACTIVE_SHIM
+namespace CP.IO.Ports.Reactive;
+#else
 namespace CP.IO.Ports;
+#endif
 
 /// <summary>Serial Port Rx.</summary>
 /// <seealso cref="ISerialPortRx"/>
