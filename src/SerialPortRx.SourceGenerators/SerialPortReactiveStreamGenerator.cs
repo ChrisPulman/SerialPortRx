@@ -406,7 +406,7 @@ public sealed class SerialPortReactiveStreamAttribute : global::System.Attribute
             _ = builder.AppendLine();
         }
 
-        _ = builder.Append("partial class ").Append(targetType.Name).AppendLine();
+        _ = builder.Append("partial class ").AppendLine(targetType.Name);
         _ = builder.AppendLine("{");
 
         foreach (var stream in streams)

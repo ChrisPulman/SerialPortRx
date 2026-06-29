@@ -7,7 +7,7 @@
     <LangVersion>latest</LangVersion>
     <IsPackable>false</IsPackable>
     <IncludeBuildOutput>false</IncludeBuildOutput>
-    <NoWarn>$(NoWarn);RS1036;RS2008;SA1201;SA1203;RCS1197;RCS1201</NoWarn>
+    <EnforceExtendedAnalyzerRules>true</EnforceExtendedAnalyzerRules>
   </PropertyGroup>
 
   <ItemGroup>

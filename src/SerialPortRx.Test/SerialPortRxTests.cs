@@ -11,7 +11,7 @@ namespace CP.IO.Ports.Tests;
 /// </summary>
 [Category("Integration")]
 [NotInParallel]
-public sealed class SerialPortRxTests : IDisposable
+public sealed class SerialPortRxTests
 {
     /// <summary>The first virtual serial port name.</summary>
     private const string Port1Name = "COM1";
@@ -21,18 +21,6 @@ public sealed class SerialPortRxTests : IDisposable
 
     /// <summary>The default baud rate used by integration tests.</summary>
     private const int DefaultBaudRate = 9600;
-
-    /// <summary>The first test port.</summary>
-    private SerialPortRx? _port1;
-
-    /// <summary>The second test port.</summary>
-    private SerialPortRx? _port2;
-
-    /// <summary>Subscriptions owned by the current test.</summary>
-    private CompositeDisposable? _disposables;
-
-    /// <summary>Indicates whether this test instance has been disposed.</summary>
-    private bool _disposed;
 
     /// <summary>Check if test ports are available before running tests.</summary>
     [Before(Class)]
@@ -49,115 +37,75 @@ public sealed class SerialPortRxTests : IDisposable
                   "Use com0com or Virtual Serial Port Driver to create virtual ports.");
     }
 
-    /// <summary>Initializes resources required for each test.</summary>
-    [Before(Test)]
-    public void BeforeTest() => _disposables = new();
-
-    /// <summary>Performs cleanup operations after each test.</summary>
-    /// <returns>A <see cref="Task"/> representing the asynchronous cleanup operation.</returns>
-    [After(Test)]
-    public async Task AfterTest()
-    {
-        await Task.Delay(100);
-        DiscardBuffers(_port1);
-        DiscardBuffers(_port2);
-        _port1?.Close();
-        _port2?.Close();
-        Dispose();
-    }
-
-    /// <summary>Releases resources used by the test instance.</summary>
-    public void Dispose()
-    {
-        if (_disposed)
-        {
-            return;
-        }
-
-        DiscardBuffers(_port1);
-        DiscardBuffers(_port2);
-        _port1?.Close();
-        _port2?.Close();
-        _port1?.Dispose();
-        _port2?.Dispose();
-        _disposables?.Dispose();
-        _disposed = true;
-        GC.SuppressFinalize(this);
-    }
-
     /// <summary>Verifies that calling Open on a SerialPortRx instance with a valid port sets the IsOpen property to true.</summary>
+    /// <param name="cancellationToken">The TUnit timeout cancellation token.</param>
     /// <returns>A <see cref="Task"/> representing the asynchronous unit test.</returns>
     [Test]
     [Timeout(5000)]
-    public async Task Open_WithValidPort_SetsIsOpenToTrue()
+    public async Task Open_WithValidPort_SetsIsOpenToTrue(CancellationToken cancellationToken)
     {
-        // Arrange
-        _port1 = new(Port1Name, DefaultBaudRate);
+        using var port1 = new SerialPortRx(Port1Name, DefaultBaudRate);
 
-        // Act
-        await _port1.Open();
+        await port1.Open();
 
-        // Assert
-        await Assert.That(_port1.IsOpen).IsTrue();
+        await Assert.That(port1.IsOpen).IsTrue();
     }
 
     /// <summary>Verifies that calling Close after opening the serial port sets the IsOpen property to false.</summary>
+    /// <param name="cancellationToken">The TUnit timeout cancellation token.</param>
     /// <returns>A <see cref="Task"/> representing the asynchronous unit test.</returns>
     [Test]
     [Timeout(5000)]
-    public async Task Close_AfterOpen_SetsIsOpenToFalse()
+    public async Task Close_AfterOpen_SetsIsOpenToFalse(CancellationToken cancellationToken)
     {
-        // Arrange
-        _port1 = new(Port1Name, DefaultBaudRate);
-        await _port1.Open();
+        using var port1 = new SerialPortRx(Port1Name, DefaultBaudRate);
+        await port1.Open();
 
-        // Act
-        _port1.Close();
+        port1.Close();
 
-        // Assert
-        await Assert.That(_port1.IsOpen).IsFalse();
+        await Assert.That(port1.IsOpen).IsFalse();
     }
 
     /// <summary>Verifies that the IsOpenObservable property emits the correct sequence of values.</summary>
+    /// <param name="cancellationToken">The TUnit timeout cancellation token.</param>
     /// <returns>A <see cref="Task"/> representing the asynchronous unit test.</returns>
     [Test]
     [Timeout(5000)]
-    public async Task IsOpenObservable_EmitsCorrectValues()
+    public async Task IsOpenObservable_EmitsCorrectValues(CancellationToken cancellationToken)
     {
-        // Arrange
-        _port1 = new(Port1Name, DefaultBaudRate);
+        using var port1 = new SerialPortRx(Port1Name, DefaultBaudRate);
+        using var disposables = new CompositeDisposable();
         var values = new List<bool>();
-        _disposables!.Add(_port1.IsOpenObservable.Subscribe(v => values.Add(v)));
+        disposables.Add(port1.IsOpenObservable.Subscribe(values.Add));
 
-        // Act
-        await _port1.Open();
-        await Task.Delay(100);
-        _port1.Close();
-        await Task.Delay(100);
+        await port1.Open();
+        await Task.Delay(100, cancellationToken);
+        port1.Close();
+        await Task.Delay(100, cancellationToken);
 
-        // Assert
         await Assert.That(values.Count).IsGreaterThanOrEqualTo(2);
         await Assert.That(values).Contains(true);
         await Assert.That(values[^1]).IsFalse();
     }
 
     /// <summary>Verifies that the DataReceived event emits the correct sequence of received characters.</summary>
+    /// <param name="cancellationToken">The TUnit timeout cancellation token.</param>
     /// <returns>A <see cref="Task"/> representing the asynchronous unit test.</returns>
     [Test]
     [Timeout(5000)]
-    public async Task DataReceived_WhenDataWritten_EmitsReceivedCharacters()
+    public async Task DataReceived_WhenDataWritten_EmitsReceivedCharacters(CancellationToken cancellationToken)
     {
-        // Arrange
-        _port1 = new(Port1Name, DefaultBaudRate) { EnableAutoDataReceive = true };
-        _port2 = new(Port2Name, DefaultBaudRate) { EnableAutoDataReceive = true };
+        using var port1 = new SerialPortRx(Port1Name, DefaultBaudRate) { EnableAutoDataReceive = true };
+        using var port2 = new SerialPortRx(Port2Name, DefaultBaudRate) { EnableAutoDataReceive = true };
+        using var cleanup = new SerialPortCleanup(port1, port2);
+        using var disposables = new CompositeDisposable();
 
-        await _port1.Open();
-        await _port2.Open();
+        await OpenAndClearAsync(port1, port2, cancellationToken);
 
         var receivedChars = new List<char>();
-        var tcs = new TaskCompletionSource<bool>();
+        var received = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
 
-        _disposables!.Add(_port2.DataReceived.Subscribe(ch =>
+        disposables.Add(port2.DataReceived.Subscribe(ch =>
         {
             receivedChars.Add(ch);
             if (receivedChars.Count < 5)
@@ -165,67 +113,65 @@ public sealed class SerialPortRxTests : IDisposable
                 return;
             }
 
-            _ = tcs.TrySetResult(true);
+            _ = received.TrySetResult(true);
         }));
 
-        // Act
-        await Task.Delay(100); // Allow subscriptions to settle
-        _port1.Write("Hello");
-        await Task.WhenAny(tcs.Task, Task.Delay(2000));
+        await Task.Delay(100, cancellationToken);
+        port1.Write("Hello");
+        await received.Task.WaitAsync(TimeSpan.FromSeconds(2), cancellationToken);
 
-        // Assert
         await Assert.That(receivedChars.Count).IsGreaterThanOrEqualTo(5);
         await Assert.That(string.Join(string.Empty, receivedChars)).StartsWith("Hello");
     }
 
     /// <summary>Verifies that when a line is written, the Lines observable emits the complete line.</summary>
+    /// <param name="cancellationToken">The TUnit timeout cancellation token.</param>
     /// <returns>A <see cref="Task"/> representing the asynchronous unit test.</returns>
     [Test]
     [Timeout(5000)]
-    public async Task Lines_WhenLineWritten_EmitsCompleteLine()
+    public async Task Lines_WhenLineWritten_EmitsCompleteLine(CancellationToken cancellationToken)
     {
-        // Arrange
-        _port1 = new(Port1Name, DefaultBaudRate) { NewLine = "\r\n", EnableAutoDataReceive = true };
-        _port2 = new(Port2Name, DefaultBaudRate) { NewLine = "\r\n", EnableAutoDataReceive = true };
+        using var port1 = new SerialPortRx(Port1Name, DefaultBaudRate) { NewLine = "\r\n", EnableAutoDataReceive = true };
+        using var port2 = new SerialPortRx(Port2Name, DefaultBaudRate) { NewLine = "\r\n", EnableAutoDataReceive = true };
+        using var cleanup = new SerialPortCleanup(port1, port2);
+        using var disposables = new CompositeDisposable();
 
-        await _port1.Open();
-        await _port2.Open();
+        await OpenAndClearAsync(port1, port2, cancellationToken);
 
         string? receivedLine = null;
-        var tcs = new TaskCompletionSource<string>();
+        var received = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
 
-        _disposables!.Add(_port2.Lines.Take(1).Subscribe(line =>
+        disposables.Add(port2.Lines.Take(1).Subscribe(line =>
         {
             receivedLine = line;
-            _ = tcs.TrySetResult(line);
+            _ = received.TrySetResult(line);
         }));
 
-        // Act
-        await Task.Delay(100); // Allow subscriptions to settle
-        _port1.WriteLine("Test Message");
-        await Task.WhenAny(tcs.Task, Task.Delay(2000));
+        await Task.Delay(100, cancellationToken);
+        port1.WriteLine("Test Message");
+        await received.Task.WaitAsync(TimeSpan.FromSeconds(2), cancellationToken);
 
-        // Assert
         await Assert.That(receivedLine).IsEqualTo("Test Message");
     }
 
     /// <summary>Verifies that the DataReceivedBytes observable emits the correct sequence of bytes.</summary>
+    /// <param name="cancellationToken">The TUnit timeout cancellation token.</param>
     /// <returns>A <see cref="Task"/> representing the asynchronous unit test.</returns>
     [Test]
     [Timeout(5000)]
-    public async Task DataReceivedBytes_WhenBytesWritten_EmitsReceivedBytes()
+    public async Task DataReceivedBytes_WhenBytesWritten_EmitsReceivedBytes(CancellationToken cancellationToken)
     {
-        // Arrange
-        _port1 = new(Port1Name, DefaultBaudRate) { EnableAutoDataReceive = true };
-        _port2 = new(Port2Name, DefaultBaudRate) { EnableAutoDataReceive = true };
+        using var port1 = new SerialPortRx(Port1Name, DefaultBaudRate) { EnableAutoDataReceive = true };
+        using var port2 = new SerialPortRx(Port2Name, DefaultBaudRate) { EnableAutoDataReceive = true };
+        using var cleanup = new SerialPortCleanup(port1, port2);
+        using var disposables = new CompositeDisposable();
 
-        await _port1.Open();
-        await _port2.Open();
+        await OpenAndClearAsync(port1, port2, cancellationToken);
 
         var receivedBytes = new List<byte>();
-        var tcs = new TaskCompletionSource<bool>();
+        var received = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
 
-        _disposables!.Add(_port2.DataReceivedBytes.Subscribe(b =>
+        disposables.Add(port2.DataReceivedBytes.Subscribe(b =>
         {
             receivedBytes.Add(b);
             if (receivedBytes.Count < 3)
@@ -233,15 +179,13 @@ public sealed class SerialPortRxTests : IDisposable
                 return;
             }
 
-            _ = tcs.TrySetResult(true);
+            _ = received.TrySetResult(true);
         }));
 
-        // Act
-        await Task.Delay(100); // Allow subscriptions to settle
-        _port1.Write([0x01, 0x02, 0x03], 0, 3);
-        await Task.WhenAny(tcs.Task, Task.Delay(2000));
+        await Task.Delay(100, cancellationToken);
+        port1.Write([0x01, 0x02, 0x03], 0, 3);
+        await received.Task.WaitAsync(TimeSpan.FromSeconds(2), cancellationToken);
 
-        // Assert
         await Assert.That(receivedBytes.Count).IsGreaterThanOrEqualTo(3);
         await Assert.That(receivedBytes[0]).IsEqualTo((byte)0x01);
         await Assert.That(receivedBytes[1]).IsEqualTo((byte)0x02);
@@ -249,72 +193,66 @@ public sealed class SerialPortRxTests : IDisposable
     }
 
     /// <summary>Verifies that the ReadLine method returns the expected line when data is available.</summary>
+    /// <param name="cancellationToken">The TUnit timeout cancellation token.</param>
     /// <returns>A <see cref="Task"/> representing the asynchronous unit test.</returns>
     [Test]
     [Timeout(5000)]
-    public async Task ReadLine_WhenDataAvailable_ReturnsLine()
+    public async Task ReadLine_WhenDataAvailable_ReturnsLine(CancellationToken cancellationToken)
     {
-        // Arrange - disable auto receive to use sync reads
-        _port1 = new(Port1Name, DefaultBaudRate) { NewLine = "\r\n", EnableAutoDataReceive = false };
-        _port2 = new(Port2Name, DefaultBaudRate) { NewLine = "\r\n", EnableAutoDataReceive = false, ReadTimeout = 2000 };
+        using var port1 = new SerialPortRx(Port1Name, DefaultBaudRate) { NewLine = "\r\n", EnableAutoDataReceive = false };
+        using var port2 = new SerialPortRx(Port2Name, DefaultBaudRate) { NewLine = "\r\n", EnableAutoDataReceive = false, ReadTimeout = 2000 };
+        using var cleanup = new SerialPortCleanup(port1, port2);
 
-        await _port1.Open();
-        await _port2.Open();
+        await OpenAndClearAsync(port1, port2, cancellationToken);
 
-        // Act
-        _port1.WriteLine("Sync Test");
-        await Task.Delay(200);
+        port1.WriteLine("Sync Test");
+        await Task.Delay(200, cancellationToken);
 
-        var line = _port2.ReadLine();
+        var line = await Task.Run(() => port2.ReadLine(), cancellationToken);
 
-        // Assert
         await Assert.That(line).IsEqualTo("Sync Test");
     }
 
     /// <summary>Verifies that the ReadExisting method returns all available data.</summary>
+    /// <param name="cancellationToken">The TUnit timeout cancellation token.</param>
     /// <returns>A <see cref="Task"/> representing the asynchronous unit test.</returns>
     [Test]
     [Timeout(5000)]
-    public async Task ReadExisting_WhenDataAvailable_ReturnsAllData()
+    public async Task ReadExisting_WhenDataAvailable_ReturnsAllData(CancellationToken cancellationToken)
     {
-        // Arrange
-        _port1 = new(Port1Name, DefaultBaudRate) { EnableAutoDataReceive = false };
-        _port2 = new(Port2Name, DefaultBaudRate) { EnableAutoDataReceive = false };
+        using var port1 = new SerialPortRx(Port1Name, DefaultBaudRate) { EnableAutoDataReceive = false };
+        using var port2 = new SerialPortRx(Port2Name, DefaultBaudRate) { EnableAutoDataReceive = false };
+        using var cleanup = new SerialPortCleanup(port1, port2);
 
-        await _port1.Open();
-        await _port2.Open();
+        await OpenAndClearAsync(port1, port2, cancellationToken);
 
-        // Act
-        _port1.Write("Test Data");
-        await Task.Delay(200);
+        port1.Write("Test Data");
+        await Task.Delay(200, cancellationToken);
 
-        var data = _port2.ReadExisting();
+        var data = port2.ReadExisting();
 
-        // Assert
         await Assert.That(data).IsEqualTo("Test Data");
     }
 
     /// <summary>Verifies that reading a byte array returns the correct bytes.</summary>
+    /// <param name="cancellationToken">The TUnit timeout cancellation token.</param>
     /// <returns>A <see cref="Task"/> representing the asynchronous unit test.</returns>
     [Test]
     [Timeout(5000)]
-    public async Task Read_ByteArray_ReturnsCorrectBytes()
+    public async Task Read_ByteArray_ReturnsCorrectBytes(CancellationToken cancellationToken)
     {
-        // Arrange
-        _port1 = new(Port1Name, DefaultBaudRate) { EnableAutoDataReceive = false, ReadTimeout = 2000 };
-        _port2 = new(Port2Name, DefaultBaudRate) { EnableAutoDataReceive = false, ReadTimeout = 2000 };
+        using var port1 = new SerialPortRx(Port1Name, DefaultBaudRate) { EnableAutoDataReceive = false, ReadTimeout = 2000 };
+        using var port2 = new SerialPortRx(Port2Name, DefaultBaudRate) { EnableAutoDataReceive = false, ReadTimeout = 2000 };
+        using var cleanup = new SerialPortCleanup(port1, port2);
 
-        await _port1.Open();
-        await _port2.Open();
+        await OpenAndClearAsync(port1, port2, cancellationToken);
 
-        // Act
-        _port1.Write([65, 66, 67], 0, 3);
-        await Task.Delay(200);
+        port1.Write([65, 66, 67], 0, 3);
+        await Task.Delay(200, cancellationToken);
 
         var buffer = new byte[10];
-        var bytesRead = _port2.Read(buffer, 0, 3);
+        var bytesRead = await Task.Run(() => port2.Read(buffer, 0, 3), cancellationToken);
 
-        // Assert
         await Assert.That(bytesRead).IsEqualTo(3);
         await Assert.That(buffer[0]).IsEqualTo((byte)65);
         await Assert.That(buffer[1]).IsEqualTo((byte)66);
@@ -322,158 +260,132 @@ public sealed class SerialPortRxTests : IDisposable
     }
 
     /// <summary>Verifies that ReadLineAsync returns the expected line when data is available.</summary>
+    /// <param name="cancellationToken">The TUnit timeout cancellation token.</param>
     /// <returns>A <see cref="Task"/> representing the asynchronous unit test.</returns>
     [Test]
     [Timeout(5000)]
-    public async Task ReadLineAsync_WhenDataAvailable_ReturnsLine()
+    public async Task ReadLineAsync_WhenDataAvailable_ReturnsLine(CancellationToken cancellationToken)
     {
-        // Arrange
-        _port1 = new(Port1Name, DefaultBaudRate) { NewLine = "\r\n", EnableAutoDataReceive = true };
-        _port2 = new(Port2Name, DefaultBaudRate) { NewLine = "\r\n", EnableAutoDataReceive = true, ReadTimeout = 3000 };
+        using var port1 = new SerialPortRx(Port1Name, DefaultBaudRate) { NewLine = "\r\n", EnableAutoDataReceive = true };
+        using var port2 = new SerialPortRx(Port2Name, DefaultBaudRate) { NewLine = "\r\n", EnableAutoDataReceive = true, ReadTimeout = 3000 };
+        using var cleanup = new SerialPortCleanup(port1, port2);
 
-        await _port1.Open();
-        await _port2.Open();
+        await OpenAndClearAsync(port1, port2, cancellationToken);
 
-        // Ensure clean buffer state
-        _port1.DiscardInBuffer();
-        _port1.DiscardOutBuffer();
-        _port2.DiscardInBuffer();
-        _port2.DiscardOutBuffer();
-        await Task.Delay(200); // Allow buffers to clear
-
-        // Act - start the read task first, then send data
         const string TestMessage = "AsyncLineTestMessage";
-        var readTask = _port2.ReadLineAsync();
+        var readTask = port2.ReadLineAsync(cancellationToken);
 
-        // Small delay to ensure subscription is active
-        await Task.Delay(50);
-        _port1.WriteLine(TestMessage);
+        await Task.Delay(50, cancellationToken);
+        port1.WriteLine(TestMessage);
 
         var line = await readTask;
 
-        // Assert
         await Assert.That(line).IsEqualTo(TestMessage);
     }
 
     /// <summary>Verifies that ReadLineAsync throws when canceled.</summary>
+    /// <param name="cancellationToken">The TUnit timeout cancellation token.</param>
     /// <returns>A <see cref="Task"/> representing the asynchronous unit test.</returns>
     [Test]
     [Timeout(5000)]
-    public async Task ReadLineAsync_WithCancellation_ThrowsOperationCanceled()
+    public async Task ReadLineAsync_WithCancellation_ThrowsOperationCanceled(CancellationToken cancellationToken)
     {
-        // Arrange
-        _port1 = new(Port1Name, DefaultBaudRate) { EnableAutoDataReceive = true };
-        _port2 = new(Port2Name, DefaultBaudRate) { EnableAutoDataReceive = true };
+        using var port1 = new SerialPortRx(Port1Name, DefaultBaudRate) { EnableAutoDataReceive = true };
+        using var port2 = new SerialPortRx(Port2Name, DefaultBaudRate) { EnableAutoDataReceive = true };
+        using var cleanup = new SerialPortCleanup(port1, port2);
 
-        await _port1.Open();
-        await _port2.Open();
-        await Task.Delay(100); // Allow ports to settle
+        await OpenAndClearAsync(port1, port2, cancellationToken);
 
         using var cts = new CancellationTokenSource(500);
 
-        // Act & Assert - TaskCanceledException inherits from OperationCanceledException.
-        async Task Act() => _ = await _port2.ReadLineAsync(cts.Token);
+        async Task Act() => _ = await port2.ReadLineAsync(cts.Token);
 
         await Assert.That(Act).Throws<OperationCanceledException>();
     }
 
     /// <summary>Verifies that ReadToAsync returns data up to the specified delimiter.</summary>
+    /// <param name="cancellationToken">The TUnit timeout cancellation token.</param>
     /// <returns>A <see cref="Task"/> representing the asynchronous unit test.</returns>
     [Test]
     [Timeout(5000)]
-    public async Task ReadToAsync_WhenDelimiterFound_ReturnsDataUpToDelimiter()
+    public async Task ReadToAsync_WhenDelimiterFound_ReturnsDataUpToDelimiter(CancellationToken cancellationToken)
     {
-        // Arrange
-        _port1 = new(Port1Name, DefaultBaudRate) { EnableAutoDataReceive = true };
-        _port2 = new(Port2Name, DefaultBaudRate) { EnableAutoDataReceive = true, ReadTimeout = 3000 };
+        using var port1 = new SerialPortRx(Port1Name, DefaultBaudRate) { EnableAutoDataReceive = true };
+        using var port2 = new SerialPortRx(Port2Name, DefaultBaudRate) { EnableAutoDataReceive = true, ReadTimeout = 3000 };
+        using var cleanup = new SerialPortCleanup(port1, port2);
 
-        await _port1.Open();
-        await _port2.Open();
+        await OpenAndClearAsync(port1, port2, cancellationToken);
 
-        // Act
-        await Task.Delay(100); // Allow subscriptions to settle
-        _port1.Write("Hello>World");
+        var readTask = port2.ReadToAsync(">", cancellationToken);
+        await Task.Delay(50, cancellationToken);
+        port1.Write("Hello>World");
 
-        var result = await _port2.ReadToAsync(">");
+        var result = await readTask;
 
-        // Assert
         await Assert.That(result).IsEqualTo("Hello");
     }
 
     /// <summary>Verifies that writing a string sends data to the other port.</summary>
+    /// <param name="cancellationToken">The TUnit timeout cancellation token.</param>
     /// <returns>A <see cref="Task"/> representing the asynchronous unit test.</returns>
     [Test]
     [Timeout(5000)]
-    public async Task Write_String_DataReceivedOnOtherPort()
+    public async Task Write_String_DataReceivedOnOtherPort(CancellationToken cancellationToken)
     {
-        // Arrange
-        _port1 = new(Port1Name, DefaultBaudRate) { EnableAutoDataReceive = false };
-        _port2 = new(Port2Name, DefaultBaudRate) { EnableAutoDataReceive = false };
+        using var port1 = new SerialPortRx(Port1Name, DefaultBaudRate) { EnableAutoDataReceive = false };
+        using var port2 = new SerialPortRx(Port2Name, DefaultBaudRate) { EnableAutoDataReceive = false };
+        using var cleanup = new SerialPortCleanup(port1, port2);
 
-        await _port1.Open();
-        await _port2.Open();
+        await OpenAndClearAsync(port1, port2, cancellationToken);
 
-        // Act
-        _port1.Write("Test String");
-        await Task.Delay(200);
+        port1.Write("Test String");
+        await Task.Delay(200, cancellationToken);
 
-        // Assert
-        var received = _port2.ReadExisting();
+        var received = port2.ReadExisting();
         await Assert.That(received).IsEqualTo("Test String");
     }
 
     /// <summary>Verifies that WriteLine appends the newline character.</summary>
+    /// <param name="cancellationToken">The TUnit timeout cancellation token.</param>
     /// <returns>A <see cref="Task"/> representing the asynchronous unit test.</returns>
     [Test]
     [Timeout(5000)]
-    public async Task WriteLine_AddsNewLine()
+    public async Task WriteLine_AddsNewLine(CancellationToken cancellationToken)
     {
-        // Arrange
-        _port1 = new(Port1Name, DefaultBaudRate) { NewLine = "\n", EnableAutoDataReceive = false };
-        _port2 = new(Port2Name, DefaultBaudRate) { NewLine = "\n", EnableAutoDataReceive = false };
+        using var port1 = new SerialPortRx(Port1Name, DefaultBaudRate) { NewLine = "\n", EnableAutoDataReceive = false };
+        using var port2 = new SerialPortRx(Port2Name, DefaultBaudRate) { NewLine = "\n", EnableAutoDataReceive = false };
+        using var cleanup = new SerialPortCleanup(port1, port2);
 
-        await _port1.Open();
-        await _port2.Open();
+        await OpenAndClearAsync(port1, port2, cancellationToken);
 
-        // Act
-        _port1.WriteLine("Test");
-        await Task.Delay(200);
+        port1.WriteLine("Test");
+        await Task.Delay(200, cancellationToken);
 
-        // Assert
-        var received = _port2.ReadExisting();
+        var received = port2.ReadExisting();
         await Assert.That(received).IsEqualTo("Test\n");
     }
 
     /// <summary>Verifies that writing a byte array sends data correctly.</summary>
+    /// <param name="cancellationToken">The TUnit timeout cancellation token.</param>
     /// <returns>A <see cref="Task"/> representing the asynchronous unit test.</returns>
     [Test]
     [Timeout(5000)]
-    public async Task Write_ByteArray_DataReceivedCorrectly()
+    public async Task Write_ByteArray_DataReceivedCorrectly(CancellationToken cancellationToken)
     {
-        // Arrange
-        _port1 = new(Port1Name, DefaultBaudRate) { EnableAutoDataReceive = false };
-        _port2 = new(Port2Name, DefaultBaudRate) { EnableAutoDataReceive = false, ReadTimeout = 2000 };
+        using var port1 = new SerialPortRx(Port1Name, DefaultBaudRate) { EnableAutoDataReceive = false };
+        using var port2 = new SerialPortRx(Port2Name, DefaultBaudRate) { EnableAutoDataReceive = false, ReadTimeout = 2000 };
+        using var cleanup = new SerialPortCleanup(port1, port2);
 
-        await _port1.Open();
-        await _port2.Open();
-
-        // Ensure clean buffer state
-        _port1.DiscardInBuffer();
-        _port1.DiscardOutBuffer();
-        _port2.DiscardInBuffer();
-        _port2.DiscardOutBuffer();
-        await Task.Delay(50);
+        await OpenAndClearAsync(port1, port2, cancellationToken);
 
         byte[] dataToSend = [0xAA, 0xBB, 0xCC, 0xDD];
 
-        // Act
-        _port1.Write(dataToSend, 0, 4);
-        await Task.Delay(200);
+        port1.Write(dataToSend, 0, 4);
+        await Task.Delay(200, cancellationToken);
 
         var buffer = new byte[10];
-        var bytesRead = _port2.Read(buffer, 0, 4);
+        var bytesRead = await Task.Run(() => port2.Read(buffer, 0, 4), cancellationToken);
 
-        // Assert
         await Assert.That(bytesRead).IsEqualTo(4);
         await Assert.That(buffer[0]).IsEqualTo((byte)0xAA);
         await Assert.That(buffer[1]).IsEqualTo((byte)0xBB);
@@ -482,26 +394,24 @@ public sealed class SerialPortRxTests : IDisposable
     }
 
     /// <summary>Verifies that writing a character array sends data correctly.</summary>
+    /// <param name="cancellationToken">The TUnit timeout cancellation token.</param>
     /// <returns>A <see cref="Task"/> representing the asynchronous unit test.</returns>
     [Test]
     [Timeout(5000)]
-    public async Task Write_CharArray_DataReceivedCorrectly()
+    public async Task Write_CharArray_DataReceivedCorrectly(CancellationToken cancellationToken)
     {
-        // Arrange
-        _port1 = new(Port1Name, DefaultBaudRate) { EnableAutoDataReceive = false };
-        _port2 = new(Port2Name, DefaultBaudRate) { EnableAutoDataReceive = false };
+        using var port1 = new SerialPortRx(Port1Name, DefaultBaudRate) { EnableAutoDataReceive = false };
+        using var port2 = new SerialPortRx(Port2Name, DefaultBaudRate) { EnableAutoDataReceive = false };
+        using var cleanup = new SerialPortCleanup(port1, port2);
 
-        await _port1.Open();
-        await _port2.Open();
+        await OpenAndClearAsync(port1, port2, cancellationToken);
 
         char[] chars = ['A', 'B', 'C'];
 
-        // Act
-        _port1.Write(chars);
-        await Task.Delay(200);
+        port1.Write(chars);
+        await Task.Delay(200, cancellationToken);
 
-        // Assert
-        var received = _port2.ReadExisting();
+        var received = port2.ReadExisting();
         await Assert.That(received).IsEqualTo("ABC");
     }
 
@@ -510,10 +420,8 @@ public sealed class SerialPortRxTests : IDisposable
     [Test]
     public async Task DefaultValues_AreSetCorrectly()
     {
-        // Arrange & Act
-        var port = new SerialPortRx();
+        using var port = new SerialPortRx();
 
-        // Assert
         using (Assert.Multiple())
         {
             await Assert.That(port.BaudRate).IsEqualTo(9600);
@@ -526,8 +434,6 @@ public sealed class SerialPortRxTests : IDisposable
             await Assert.That(port.WriteTimeout).IsEqualTo(-1);
             await Assert.That(port.EnableAutoDataReceive).IsTrue();
         }
-
-        port.Dispose();
     }
 
     /// <summary>Verifies constructor with all parameters.</summary>
@@ -535,10 +441,8 @@ public sealed class SerialPortRxTests : IDisposable
     [Test]
     public async Task Constructor_WithAllParameters_SetsValuesCorrectly()
     {
-        // Arrange & Act
-        var port = new SerialPortRx("COM3", 115_200, 7, Parity.Even, StopBits.Two, Handshake.RequestToSend);
+        using var port = new SerialPortRx("COM3", 115_200, 7, Parity.Even, StopBits.Two, Handshake.RequestToSend);
 
-        // Assert
         using (Assert.Multiple())
         {
             await Assert.That(port.PortName).IsEqualTo("COM3");
@@ -548,22 +452,19 @@ public sealed class SerialPortRxTests : IDisposable
             await Assert.That(port.StopBits).IsEqualTo(StopBits.Two);
             await Assert.That(port.Handshake).IsEqualTo(Handshake.RequestToSend);
         }
-
-        port.Dispose();
     }
 
     /// <summary>Verifies that opening a non-existent port throws an exception.</summary>
+    /// <param name="cancellationToken">The TUnit timeout cancellation token.</param>
     /// <returns>A <see cref="Task"/> representing the asynchronous unit test.</returns>
     [Test]
     [Timeout(5000)]
-    public async Task Open_WithNonExistentPort_ThrowsException()
+    public async Task Open_WithNonExistentPort_ThrowsException(CancellationToken cancellationToken)
     {
-        // Arrange
-        _port1 = new("COMNONEXISTENT", DefaultBaudRate);
+        using var port1 = new SerialPortRx("COMNONEXISTENT", DefaultBaudRate);
 
-        // Act & Assert - Open throws for non-existent port.
-        await Assert.That(async () => await _port1.Open()).Throws<Exception>();
-        await Assert.That(_port1.IsOpen).IsFalse();
+        await Assert.That(port1.Open).Throws<Exception>();
+        await Assert.That(port1.IsOpen).IsFalse();
     }
 
     /// <summary>Verifies that ReadLine throws when port is not open.</summary>
@@ -571,11 +472,9 @@ public sealed class SerialPortRxTests : IDisposable
     [Test]
     public async Task ReadLine_WhenPortNotOpen_ThrowsInvalidOperationException()
     {
-        // Arrange
-        _port1 = new(Port1Name, DefaultBaudRate);
+        using var port1 = new SerialPortRx(Port1Name, DefaultBaudRate);
 
-        // Act & Assert
-        await Assert.That(() => _port1.ReadLine()).Throws<InvalidOperationException>();
+        await Assert.That(port1.ReadLine).Throws<InvalidOperationException>();
     }
 
     /// <summary>Verifies that ReadExisting throws when port is not open.</summary>
@@ -583,53 +482,48 @@ public sealed class SerialPortRxTests : IDisposable
     [Test]
     public async Task ReadExisting_WhenPortNotOpen_ThrowsInvalidOperationException()
     {
-        // Arrange
-        _port1 = new(Port1Name, DefaultBaudRate);
+        using var port1 = new SerialPortRx(Port1Name, DefaultBaudRate);
 
-        // Act & Assert
-        await Assert.That(() => _port1.ReadExisting()).Throws<InvalidOperationException>();
+        await Assert.That(port1.ReadExisting).Throws<InvalidOperationException>();
     }
 
     /// <summary>Verifies that PortNames returns available ports.</summary>
+    /// <param name="cancellationToken">The TUnit timeout cancellation token.</param>
     /// <returns>A <see cref="Task"/> representing the asynchronous unit test.</returns>
     [Test]
     [Timeout(5000)]
-    public async Task PortNames_ReturnsAvailablePorts()
+    public async Task PortNames_ReturnsAvailablePorts(CancellationToken cancellationToken)
     {
-        // Arrange
+        using var disposables = new CompositeDisposable();
         var receivedPorts = new List<string[]>();
-        var tcs = new TaskCompletionSource<bool>();
+        var received = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
 
-        // Act
-        _disposables!.Add(SerialPortRx.PortNames(100, 1).Subscribe(ports =>
+        disposables.Add(SerialPortRx.PortNames(100, 1).Subscribe(ports =>
         {
             receivedPorts.Add(ports);
-            _ = tcs.TrySetResult(true);
+            _ = received.TrySetResult(true);
         }));
 
-        await Task.WhenAny(tcs.Task, Task.Delay(2000));
+        await received.Task.WaitAsync(TimeSpan.FromSeconds(2), cancellationToken);
 
-        // Assert
         await Assert.That(receivedPorts.Count).IsGreaterThanOrEqualTo(1);
         await Assert.That(receivedPorts[0]).Contains(Port1Name).Or.Contains(Port2Name);
     }
 
     /// <summary>Verifies that Dispose closes the port and sets IsDisposed.</summary>
+    /// <param name="cancellationToken">The TUnit timeout cancellation token.</param>
     /// <returns>A <see cref="Task"/> representing the asynchronous unit test.</returns>
     [Test]
     [Timeout(5000)]
-    public async Task Dispose_ClosesPortAndSetsIsDisposed()
+    public async Task Dispose_ClosesPortAndSetsIsDisposed(CancellationToken cancellationToken)
     {
-        // Arrange
-        _port1 = new(Port1Name, DefaultBaudRate);
-        await _port1.Open();
+        using var port1 = new SerialPortRx(Port1Name, DefaultBaudRate);
+        await port1.Open();
 
-        // Act
-        _port1.Dispose();
+        port1.Dispose();
 
-        // Assert
-        await Assert.That(_port1.IsDisposed).IsTrue();
-        await Assert.That(_port1.IsOpen).IsFalse();
+        await Assert.That(port1.IsDisposed).IsTrue();
+        await Assert.That(port1.IsOpen).IsFalse();
     }
 
     /// <summary>Verifies that Dispose can be called multiple times.</summary>
@@ -637,23 +531,35 @@ public sealed class SerialPortRxTests : IDisposable
     [Test]
     public async Task Dispose_CanBeCalledMultipleTimes()
     {
-        // Arrange
-        _port1 = new(Port1Name, DefaultBaudRate);
+        using var port1 = new SerialPortRx(Port1Name, DefaultBaudRate);
 
-        // Act & Assert - should not throw
         await Assert.That(() =>
         {
-            _port1.Dispose();
-            _port1.Dispose();
-            _port1.Dispose();
+            port1.Dispose();
+            port1.Dispose();
+            port1.Dispose();
         }).ThrowsNothing();
+    }
+
+    /// <summary>Opens a pair of ports and clears any stale data before a test action writes new data.</summary>
+    /// <param name="port1">The first port.</param>
+    /// <param name="port2">The second port.</param>
+    /// <param name="cancellationToken">The TUnit timeout cancellation token.</param>
+    /// <returns>A task representing the asynchronous open operation.</returns>
+    private static async Task OpenAndClearAsync(SerialPortRx port1, SerialPortRx port2, CancellationToken cancellationToken)
+    {
+        await port1.Open();
+        await port2.Open();
+        DiscardBuffers(port1);
+        DiscardBuffers(port2);
+        await Task.Delay(50, cancellationToken);
     }
 
     /// <summary>Attempts to discard input and output buffers for an open test port.</summary>
     /// <param name="port">The port to clean.</param>
-    private static void DiscardBuffers(SerialPortRx? port)
+    private static void DiscardBuffers(SerialPortRx port)
     {
-        if (port?.IsOpen != true)
+        if (!port.IsOpen)
         {
             return;
         }
@@ -668,6 +574,27 @@ public sealed class SerialPortRxTests : IDisposable
         }
         catch (IOException)
         {
+        }
+    }
+
+    /// <summary>Discards serial-port buffers and closes ports when a test scope exits.</summary>
+    private sealed class SerialPortCleanup : IDisposable
+    {
+        /// <summary>The ports to clean when the scope exits.</summary>
+        private readonly SerialPortRx[] _ports;
+
+        /// <summary>Initializes a new instance of the <see cref="SerialPortCleanup"/> class.</summary>
+        /// <param name="ports">The ports to clean when the scope exits.</param>
+        public SerialPortCleanup(params SerialPortRx[] ports) => _ports = ports;
+
+        /// <summary>Discards pending data and closes each registered port.</summary>
+        public void Dispose()
+        {
+            foreach (var port in _ports)
+            {
+                DiscardBuffers(port);
+                port.Close();
+            }
         }
     }
 }

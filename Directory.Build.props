@@ -11,10 +11,9 @@
     <LangVersion>preview</LangVersion>
     <Configuration>$(TargetFramework)</Configuration>
     <Company>ChrisPulman</Company>
-    <NoWarn>$(NoWarn);CS1591;IDE0190;IDE1006;SA1010</NoWarn>
     <Nullable>enable</Nullable>
     <PackageIcon>logo.png</PackageIcon>
-    <PackageReleaseNotes>Compatibility with .NET 8/9/10, TUnit/MTP tests, async observable bridges, and serial reactive stream source generation.</PackageReleaseNotes>
+    <PackageReleaseNotes>Compatibility with .NET 8/9/10/11, TUnit/MTP tests, async observable bridges, and serial reactive stream source generation.</PackageReleaseNotes>
     <PackageTags>SerialPort;rx;reactive;extensions;observable;LINQ;net;netstandard</PackageTags>
     <EnableNETAnalyzers>True</EnableNETAnalyzers>
     <AnalysisLevel>latest</AnalysisLevel>
@@ -39,14 +38,22 @@
 
   <PropertyGroup>
     <!-- Cross-platform TFMs that work on all platforms -->
-    <NetCoreTargetFrameworks>net8.0;net9.0;net10.0</NetCoreTargetFrameworks>
+    <NetCoreTargetFrameworks>net8.0;net9.0;net10.0;net11.0</NetCoreTargetFrameworks>
 
     <!-- Windows-only .NET Framework TFMs - only included on Windows builds -->
-    <NetFrameworkTargetFrameworks Condition="$([MSBuild]::IsOsPlatform('Windows'))">net462;net472;net481;net8.0-windows10.0.19041.0;net9.0-windows10.0.19041.0;net10.0-windows10.0.19041.0</NetFrameworkTargetFrameworks>
+    <NetFrameworkTargetFrameworks Condition="$([MSBuild]::IsOsPlatform('Windows'))">net462;net472;net481;net8.0-windows10.0.19041.0;net9.0-windows10.0.19041.0;net10.0-windows10.0.19041.0;net11.0-windows10.0.19041.0</NetFrameworkTargetFrameworks>
 
     <!-- Library projects: net8.0, net9.0, net10.0, and Windows-only framework/platform TFMs when building on Windows -->
     <LibraryTargetFrameworks>$(NetCoreTargetFrameworks)</LibraryTargetFrameworks>
     <LibraryTargetFrameworks Condition="'$(NetFrameworkTargetFrameworks)' != ''">$(LibraryTargetFrameworks);$(NetFrameworkTargetFrameworks)</LibraryTargetFrameworks>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="$([MSBuild]::IsTargetFrameworkCompatible('$(TargetFramework)', 'net11.0'))">
+    <Features>$(Features);runtime-async=on</Features>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(Configuration)'=='Debug'">
+    <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
   </PropertyGroup>
 
   <ItemGroup Condition="'$(IsTestProject)' != 'true'">
@@ -58,10 +65,6 @@
     <None Include="$(MSBuildThisFileDirectory)LICENSE" Pack="true" PackagePath="LICENSE" />
     <None Include="$(MSBuildThisFileDirectory)readme.md" Pack="true" PackagePath="\"/>
   </ItemGroup>
-
-  <PropertyGroup Condition="'$(Configuration)'=='Debug'">
-    <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
-  </PropertyGroup>
 
   <ItemGroup>
     <!--<Compile Update="**\*.cs" DependentUpon="I%(Filename).cs" />-->

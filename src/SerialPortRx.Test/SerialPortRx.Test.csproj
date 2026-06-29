@@ -6,7 +6,6 @@
     <IsPackable>false</IsPackable>
     <IsTestProject>true</IsTestProject>
     <TestTfmsInParallel>false</TestTfmsInParallel>
-    <NoWarn>$(NoWarn);TUnit0015;TUnit0018;CA1849</NoWarn>
   </PropertyGroup>
 
   <ItemGroup>
@@ -43,12 +42,6 @@
     <Using Include="TUnit.Assertions" />
     <Using Include="TUnit.Core" />
   </ItemGroup>
-
-  <Target Name="RemoveDuplicateReactiveUIPrimitivesAnalyzer" BeforeTargets="CoreCompile">
-    <ItemGroup>
-      <Analyzer Remove="$(NuGetPackageRoot)reactiveui.primitives.async\5.7.0\analyzers\dotnet\cs\ReactiveUI.Primitives.R3Bridge.Generator.dll" />
-    </ItemGroup>
-  </Target>
 
   <ItemGroup>
     <ProjectReference Include="..\SerialPortRx\SerialPortRx.csproj" />

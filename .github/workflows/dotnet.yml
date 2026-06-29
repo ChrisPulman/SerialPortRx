@@ -26,6 +26,7 @@ jobs:
             8.0.x
             9.0.x
             10.0.x
+            11.0.x
         dotnet-quality: 'preview'
         cache: true
         cache-dependency-path: |
