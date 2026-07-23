@@ -9,7 +9,7 @@
   
   <ItemGroup>
     <PackageReference Include="ReactiveUI.Primitives" Version="6.0.0" ExcludeAssets="analyzers" />
-    <PackageReference Include="ReactiveUI.Primitives.Async" Version="6.0.0" ExcludeAssets="analyzers" />
+    <PackageReference Include="ReactiveUI.Primitives.Async" Version="7.0.0" ExcludeAssets="analyzers" />
     <PackageReference Include="ReactiveUI.Primitives.Extensions" Version="6.0.0" ExcludeAssets="analyzers" />
     <PackageReference Include="System.IO.Ports" Version="10.0.10" />
   </ItemGroup>
