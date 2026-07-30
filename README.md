@@ -1,3 +1,7 @@
+# The code in this repository is now no longer being maintained and will continue at [IoT-DriverCore](https://github.com/ChrisPulman/IoT-DriverCore)
+
+I need a centralised place to continue to develop the IoT drivers and often ended up creating the same code in multiple places due to the seperation.
+
 # SerialPortRx
 A Reactive Serial, TCP, and UDP I/O library that exposes incoming data as IObservable streams and accepts writes via simple methods. Ideal for event-driven, message-framed, and polling scenarios.
 
